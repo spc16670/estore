@@ -59,7 +59,7 @@ create_sample() ->
 create_schema(S) ->
   create_schema(S,undefined).
 create_schema(S,Op) ->
-  "CREATE SCHEMA " ++ options_to_string(ifexists,Op) ++ " " ++ value_to_string(S) ++ ";".
+  "CREATE SCHEMA " ++ options_to_string(ifnotexists,Op) ++ " " ++ value_to_string(S) ++ ";".
 
 drop_table(T) ->
   drop_table(undefined,T).
