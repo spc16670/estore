@@ -1,0 +1,8 @@
+{application, psql, [
+  {description, "Erlang to PostgreSQL converter"}
+  ,{vsn, "0.1.0"}
+  ,{applications, [
+      kernel
+      ,stdlib
+    ]}
+ ]}.
