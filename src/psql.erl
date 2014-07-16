@@ -26,13 +26,7 @@
   ,where_to_string/1
 ]).
 
--record(model,{name,schema,fields}).
--record(field,{name,type,length,null,position}).
--record(unique,{id,fields}).
--record(pk,{id,fields}).
--record(fk,{id,on_delete_cascade,fields,r_schema,r_table,r_fields}).
--record(table,{name,schema,fields,constraints}).
-
+-include("psql.hrl").
 
 %% -----------------------------------------------------------------------------
 
@@ -247,7 +241,9 @@ field_to_string(#field{name=N,type=T,length=L,null=I} = _F) ->
     NStr ++ " " ++ TStr ++ " " ++ has_value(length,L) ++ " " ++ has_value(null,I);
   true -> [] end;
 field_to_string(Fs) when is_list(Fs) ->
-  field_to_string(Fs,hd(Fs)).
+  field_to_string(Fs,hd(Fs));
+field_to_string(Fs) when is_atom(Fs) ->
+  value_to_string(Fs).
 
 field_to_string(Fs,F1) when is_atom(F1) ->
   string:strip(lists:foldl(fun(E,Acc) -> Acc ++ "," ++ atom_to_list(E) end,[],Fs),left,$,);
@@ -292,7 +288,7 @@ default_name({Key,T},N) when N =:= undefined->
   value_to_string(Key) ++ "_" ++ value_to_string(T) ++ "_" 
     ++ value_to_string(now());
 default_name({_Key,_T},N) ->
-  N.
+  value_to_string(N).
 
 add_constraint(S,N,Cs) when Cs /= undefined ->
   lists:foldl(fun(E,Acc) -> Acc ++ 

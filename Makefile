@@ -1,4 +1,4 @@
-REBAR = rebar
+REBAR = ./rebar
 
 .PHONY: all compile test clean get-deps build-plt dialyze
 
