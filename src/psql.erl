@@ -7,10 +7,13 @@
   ,create_table/2
   ,create_table/3
   ,create_table/4
+  ,create_index/3
+  ,create_index/4
   ,select/1
   ,select/2
   ,select/3
   ,select/4
+  ,select/5
   ,create_sample/0
   ,select_index/1
   ,select_index/2
@@ -55,18 +58,16 @@ create_sample() ->
 
 create_schema(S) ->
   create_schema(S,undefined).
-create_schema(S,E) ->
-  "CREATE SCHEMA " ++ has_value(ifexists,E) ++ " " ++ has_value(schema,S) ++ ";".
+create_schema(S,Op) ->
+  "CREATE SCHEMA " ++ options_to_string(ifexists,Op) ++ " " ++ value_to_string(S) ++ ";".
 
 drop_table(T) ->
   drop_table(undefined,T).
 drop_table(S,T) ->
   drop_table(S,T,[]).
 drop_table(S,T,Op) ->
-  case lists:member(ifexists,Op) of true -> IE = yes; _ -> IE = undefined end,
-  case lists:member(cascade,Op) of true -> C = yes; _ -> C = undefined end,
-  "DROP TABLE " ++ has_value(ifexists,IE) ++ " " 
-  ++ table_to_string({S,T,undefined}) ++ " " ++ has_value(cascade,C) ++ ";".
+  "DROP TABLE " ++ options_to_string(ifexists,Op) ++ " " 
+  ++ table_to_string({S,T,undefined}) ++ " " ++ options_to_string(cascade,Op) ++ ";".
 
 select({S,T,A}) ->
   select([{S,T,A}]);
@@ -78,32 +79,41 @@ select(Ts) when is_list(Ts) ->
   select(Ts,['*']).
 
 select({S,T,A},Fs) when is_atom(T) ->
-  select({S,T,A},Fs,undefined);
+  select({S,T,A},Fs,undefined,undefined);
 select({S,T},Fs) when is_atom(T) ->
-  select({S,T,undefined},Fs,undefined);
+  select({S,T,undefined},Fs,undefined,undefined);
 select(T,Fs) when is_atom(T) ->
-  select({undefined,T,undefined},Fs,undefined);
+  select({undefined,T,undefined},Fs,undefined,undefined);
 select(Ts,Fs) when is_list(Ts) ->
-  select(Ts,Fs,undefined).
-  
-select({S,T,A},Fs,W) when is_atom(T) -> 
-  select([{S,T,A}],Fs,undefined,W);
-select({S,T},Fs,W) when is_atom(T) -> 
-  select({S,T,undefined},Fs,undefined,W);
-select(T,Fs,W) when is_atom(T) -> 
-  select({undefined,T,undefined},Fs,undefined,W);
-select(Ts,Fs,W) when is_list(Ts) -> 
-  select(Ts,Fs,undefined,W).
+  select(Ts,Fs,undefined,undefined).
 
-select({S,T,A},Fs,J,W) ->
-  select([{S,T,A}],Fs,J,W);
-select({S,T},Fs,J,W) when is_atom(T) ->
-  select({S,T,undefined},Fs,J,W);
-select(T,Fs,J,W) when is_atom(T) ->
-  select({undefined,T,T},Fs,J,W);
-select(Ts,Fs,J,W) when is_list(Ts) ->
+select({S,T,A},Fs,W) when is_atom(T) ->
+  select({S,T,A},Fs,W,undefined);
+select({S,T},Fs,W) when is_atom(T) ->
+  select({S,T,undefined},Fs,W,undefined);
+select(T,Fs,W) when is_atom(T) ->
+  select({undefined,T,undefined},Fs,W,undefined);
+select(Ts,Fs,W) when is_list(Ts) ->
+  select(Ts,Fs,W,undefined).
+  
+select({S,T,A},Fs,W,G) when is_atom(T) -> 
+  select([{S,T,A}],Fs,undefined,W,G);
+select({S,T},Fs,W,G) when is_atom(T) -> 
+  select({S,T,undefined},Fs,undefined,W,G);
+select(T,Fs,W,G) when is_atom(T) -> 
+  select({undefined,T,undefined},Fs,undefined,W,G);
+select(Ts,Fs,W,G) when is_list(Ts) -> 
+  select(Ts,Fs,undefined,W,G).
+
+select({S,T,A},Fs,J,W,G) ->
+  select([{S,T,A}],Fs,J,W,G);
+select({S,T},Fs,J,W,G) when is_atom(T) ->
+  select({S,T,undefined},Fs,J,W,G);
+select(T,Fs,J,W,G) when is_atom(T) ->
+  select({undefined,T,T},Fs,J,W,G);
+select(Ts,Fs,J,W,G) when is_list(Ts) ->
   "SELECT " ++ field_to_string(Fs) ++ " FROM " ++ table_to_string(Ts) 
-  ++ " " ++ join(J) ++ "" ++ where(W) ++ ";".
+  ++ " " ++ join(J) ++ "" ++ where(W) ++ groupby(G) ++ ";".
  
 create_table(Name,Fields) ->
   create_table(undefined,Name,Fields).
@@ -118,6 +128,14 @@ create_table(#table{name=N,schema=S,fields=Fs} = _T) ->
   "CREATE TABLE " ++ has_value(schema,S) ++ value_to_string(N) 
   ++ " (" ++ field_to_string(Fs) ++ "\n);".
 
+create_index(N,T,Cs) when is_atom(T) ->
+  create_index(N,T,Cs,undefined).
+create_index(N,T,Cs,Ops) when is_atom(T) ->
+  create_index(N,{undefined,T},Cs,Ops);
+create_index(N,{S,T},Cs,Ops) ->
+  "CREATE INDEX " ++ options_to_string(nolock,Ops) ++ " " ++ value_to_string(N) 
+  ++ " ON " ++ table_to_string({S,T,undefined}) ++ " (" ++ field_to_string(Cs) ++ ");".
+
 select_index(I) ->
   select_index(undefined,I).
 select_index(S,I) ->
@@ -129,7 +147,7 @@ select_index(S,I) ->
     ,'AND',{{i,oid},'=',{ix,indexrelid}}
     ,'AND',{{n,nspname},'LIKE',value_to_string(S) ++ "%"}
     ,'AND',{{t,relname},'LIKE',value_to_string(I) ++ "%"}],
-  select(Tables,Fields,Where).
+  select(Tables,Fields,Where,Fields).
 
 transaction(Stmt) ->
   "BEGIN;\n " ++ Stmt ++ "COMMIT;\n".
@@ -164,6 +182,13 @@ table_to_string(Ts,T1) when is_atom(T1) ->
   field_to_string(Ts);
 table_to_string(Ts,T1) when is_tuple(T1) ->
   string:strip(lists:foldl(fun(E,Acc) -> Acc ++ "," ++ table_to_string(E) end,[],Ts),left,$,).
+
+%% GROUP BY
+
+groupby(undefined) ->
+  [];
+groupby(G) when is_list(G) ->
+  " GROUP BY " ++ field_to_string(G).
 
 %% JOIN
 %% [{{'LEFT OUTER JOIN',{schema,othertable,o}},'ON',{{'T',name},'=',{'O',name}}}]
@@ -271,14 +296,8 @@ has_value(length,V) when V /= undefined ->
   "(" ++ value_to_string(V) ++ ")";
 has_value(schema,V) when V /= undefined ->
   value_to_string(V) ++ ".";
-has_value(ifexists,V) when V =:= 'not' ->
-  "IF NOT EXISTS";
-has_value(ifexists,V) when V =:= yes ->
-  "IF EXISTS";
-has_value(cascade,V) when V /= undefined ->
-  "CASCADE";
 has_value(odc,V) when V /= undefined ->
-  "ON DELETE " ++ has_value(cascade,V);
+  "ON DELETE " ++ proplists:get_value(cascade,options_map());
 has_value(null,V) when V =:= no orelse V =:= undefined ->
   "NOT NULL";
 has_value(_,_) ->
@@ -307,8 +326,18 @@ constraint_to_string(T,#fk{id=N,on_delete_cascade=Odc,fields=Fs,r_schema=Rs,r_ta
   ++ ") REFERENCES " ++  has_value(schema,Rs) ++ value_to_string(Rt) ++ " (" ++ field_to_string(RFs) 
   ++ ") " ++ has_value(odc,Odc) ++ ";".
 
+options_to_string(K,Opts) when is_list(Opts) ->
+  case lists:member(K,Opts) of true -> proplists:get_value(K,options_map()); _ -> [] end;
+options_to_string(_K,_Opts) ->
+  [].
 
- 
+options_map() -> [
+    {nolock,"CONCURRENTLY"}
+    ,{cascade,"CASCADE"}
+    ,{ifexists,"IF EXISTS"}
+    ,{ifnotexists,"IF NOT EXISTS"}
+  ].
+
 tuples_to_fields([{I,T,L}|Ts],Result) ->
   tuples_to_fields(Ts,Result ++ [#field{name=I,type=T,length=L}]);
 tuples_to_fields([],Result) ->
