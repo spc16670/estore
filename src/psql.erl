@@ -61,6 +61,19 @@ create_schema(S) ->
 create_schema(S,Op) ->
   "CREATE SCHEMA " ++ options_to_string(ifnotexists,Op) ++ " " ++ value_to_string(S) ++ ";".
 
+create_table(Name,Fields) ->
+  create_table(undefined,Name,Fields).
+create_table(Schema,Name,Fields) ->
+  create_table(Schema,Name,Fields,undefined).
+create_table(Schema,Name,Fields,Constraints) ->
+  Stmt = create_table(#table{name=Name,schema=Schema,fields=Fields}) 
+  ++ "\n" ++ add_constraint(Schema,Name,Constraints),
+  transaction(Stmt).
+
+create_table(#table{name=N,schema=S,fields=Fs} = _T) -> 
+  "CREATE TABLE " ++ has_value(schema,S) ++ value_to_string(N) 
+  ++ " (" ++ field_to_string(Fs) ++ "\n);".
+
 drop_table(T) ->
   drop_table(undefined,T).
 drop_table(S,T) ->
@@ -115,19 +128,6 @@ select(Ts,Fs,J,W,G) when is_list(Ts) ->
   "SELECT " ++ field_to_string(Fs) ++ " FROM " ++ table_to_string(Ts) 
   ++ " " ++ join(J) ++ "" ++ where(W) ++ groupby(G) ++ ";".
  
-create_table(Name,Fields) ->
-  create_table(undefined,Name,Fields).
-create_table(Schema,Name,Fields) ->
-  create_table(Schema,Name,Fields,undefined).
-create_table(Schema,Name,Fields,Constraints) ->
-  Stmt = create_table(#table{name=Name,schema=Schema,fields=Fields}) 
-  ++ "\n" ++ add_constraint(Schema,Name,Constraints),
-  transaction(Stmt).
-
-create_table(#table{name=N,schema=S,fields=Fs} = _T) -> 
-  "CREATE TABLE " ++ has_value(schema,S) ++ value_to_string(N) 
-  ++ " (" ++ field_to_string(Fs) ++ "\n);".
-
 create_index(N,T,Cs) when is_atom(T) ->
   create_index(N,T,Cs,undefined).
 create_index(N,T,Cs,Ops) when is_atom(T) ->
