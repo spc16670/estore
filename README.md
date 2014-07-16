@@ -1,4 +1,4 @@
 psql
 ====
 
-Erlang to PostgresSQL converter 
+Erlang to PostgreSQL converter 
