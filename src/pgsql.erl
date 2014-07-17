@@ -57,8 +57,6 @@ create_schema(S) ->
 create_schema(S,Op) ->
   "CREATE SCHEMA " ++ options_to_string(ifnotexists,Op) ++ " " ++ value_to_string(S) ++ ";".
 
-create_table(Name,Fields) ->
-  create_table(undefined,Name,Fields).
 create_table(Schema,Name,Fields) ->
   create_table(Schema,Name,Fields,undefined).
 create_table(Schema,Name,Fields,Constraints) ->
@@ -68,6 +66,8 @@ create_table(Schema,Name,Fields,Constraints,Opts) ->
   ++ "\n" ++ add_constraint(Schema,Name,Constraints),
   transaction(Stmt).
 
+create_table(Name,Fields) when is_atom(Name)->
+  create_table(undefined,Name,Fields);
 create_table(#model{name=N,schema=S,fields=Fs} = _T,Opts) -> 
   "CREATE TABLE " ++ options_to_string(ifnotexists,Opts) ++ " " 
   ++ has_value(schema,S) ++ value_to_string(N) 
