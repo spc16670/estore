@@ -1,4 +1,4 @@
-{application, psql, [
+{application, pgsql, [
   {description, "Erlang to PostgreSQL converter"}
   ,{vsn, "0.1.0"}
   ,{applications, [
