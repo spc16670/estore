@@ -1,11 +1,11 @@
--module(psql_tests).
+-module(pgsql_tests).
 
 -export([
   run/0
   ,print/2
 ]).
 
--include("psql.hrl").
+-include("pgsql.hrl").
 
 -define(SCHEMA,lamazone).
 -define(TABLE,shopper).
