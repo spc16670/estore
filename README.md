@@ -1,4 +1,4 @@
-psql
+pgsql
 ====
 
 Erlang to PostgreSQL converter 
