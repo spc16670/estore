@@ -1,4 +1,4 @@
--module(psql).
+-module(pgsql).
 
 -export([
   model/0
