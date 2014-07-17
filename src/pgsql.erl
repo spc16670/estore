@@ -1,8 +1,7 @@
 -module(pgsql).
 
 -export([
-  model/0
-  ,create_schema/1
+  create_schema/1
   ,create_schema/2
   ,create_table/2
   ,create_table/3
@@ -32,9 +31,6 @@
 -include("pgsql.hrl").
 
 %% -----------------------------------------------------------------------------
-
-model() ->
-  io:fwrite("~p~n",[#table{}]).
 
 create_sample() ->
   Name = sample,   
@@ -66,12 +62,15 @@ create_table(Name,Fields) ->
 create_table(Schema,Name,Fields) ->
   create_table(Schema,Name,Fields,undefined).
 create_table(Schema,Name,Fields,Constraints) ->
-  Stmt = create_table(#table{name=Name,schema=Schema,fields=Fields}) 
+  create_table(Schema,Name,Fields,Constraints,undefined).
+create_table(Schema,Name,Fields,Constraints,Opts) ->
+  Stmt = create_table(#model{name=Name,schema=Schema,fields=Fields},Opts) 
   ++ "\n" ++ add_constraint(Schema,Name,Constraints),
   transaction(Stmt).
 
-create_table(#table{name=N,schema=S,fields=Fs} = _T) -> 
-  "CREATE TABLE " ++ has_value(schema,S) ++ value_to_string(N) 
+create_table(#model{name=N,schema=S,fields=Fs} = _T,Opts) -> 
+  "CREATE TABLE " ++ options_to_string(ifnotexists,Opts) ++ " " 
+  ++ has_value(schema,S) ++ value_to_string(N) 
   ++ " (" ++ field_to_string(Fs) ++ "\n);".
 
 drop_table(T) ->
