@@ -13,7 +13,7 @@
   ,select/3
   ,select/4
   ,select/5
-  ,create_sample/0
+  ,create_test/0
   ,select_index/1
   ,select_index/2
   ,tuples_to_fields/2
@@ -32,17 +32,23 @@
 
 %% -----------------------------------------------------------------------------
 
-create_sample() ->
+create_test() ->
   Name = sample,   
   Schema = lamazone, 
-  %Fields = [{id,bigserial,undefined},{name,varchar,50},{age,integer,25}],
   Fields = [
-    #field{name=id,type=bigserial,null=no}
-    ,#field{name=name,type=varchar,length=50,null=yes}
-    ,#field{name=age,type=integer,null=no}
-    ,#field{name=price,type=money,null=no}
-    ,#field{name=weight,type=numeric,length={14,2},null=no}
+    #{name=>id,type=>bigserial}
+    ,#{name=>name,type=>varchar,length=>50,null=>yes}
+    ,#{name=>age,type=>integer}
+    ,#{name=>weight,type=>numeric,precision=>14,scale=>2}
   ],
+  
+  %Fields = [
+  %  #field{name=id,type=bigserial,null=no}
+  %  ,#field{name=name,type=varchar,length=50,null=yes}
+  %  ,#field{name=age,type=integer,null=no}
+  %  ,#field{name=price,type=money,null=no}
+  %  ,#field{name=weight,type=numeric,length={14,2},null=no}
+  %],
   Constraints = [
     #pk{id=undefined,fields=[id]}
     ,#unique{id=undefined,fields=[name]}
@@ -259,7 +265,7 @@ result_to_value({atom,B}) when is_binary(B) ->
 result_to_value(null) ->
   undefined.
 
-field_to_string(#field{name=N,type=T,length=L,null=I} = _F) ->
+field_to_string(#{name := N,type := T,length := L,null := I} = _F) ->
   NStr = value_to_string(N), TStr = value_to_string(T),
   if NStr /= [] andalso TStr /= [] -> 
     NStr ++ " " ++ TStr ++ " " ++ has_value(length,L) ++ " " ++ has_value(null,I);
@@ -273,7 +279,7 @@ field_to_string(Fs,F1) when is_atom(F1) ->
   string:strip(lists:foldl(fun(E,Acc) -> Acc ++ "," ++ atom_to_list(E) end,[],Fs),left,$,);
 field_to_string(Fs,F1) when is_tuple(F1) ->
   string:strip(lists:foldl(fun(E,Acc) -> Acc ++ "," ++ where_to_string(E) end,[],Fs),left,$,);
-field_to_string(Fs,F1) when is_record(F1,field) ->
+field_to_string(Fs,F1) when is_map(F1) ->
   string:strip(lists:foldl(fun(E,Acc) -> Acc ++ ",\n" ++ field_to_string(E) end,[],Fs),left,$,).
 
 value_to_string(V) when is_atom(V) andalso V /= undefined ->
