@@ -1,4 +1,4 @@
--module(pgsql_app).
+-module(model_app).
 
 -behaviour(application).
 

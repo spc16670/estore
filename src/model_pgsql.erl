@@ -1,4 +1,4 @@
--module(pgsql).
+-module(model_pgsql).
 
 -export([
   create_schema/1
@@ -28,7 +28,26 @@
   ,where_to_string/1
 ]).
 
+-behaviour(model_interface).
+
+-export([
+  save/2
+  ,delete/2
+  ,find/2
+]).
+
 -include("pgsql.hrl").
+
+%% -----------------------------------------------------------------------------
+
+save(_Name,_Map) ->
+  ok.
+
+delete(_Name,_Map) ->
+  ok.
+
+find(_Name,_Map) ->
+  ok.
 
 %% -----------------------------------------------------------------------------
 

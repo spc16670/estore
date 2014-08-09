@@ -1,4 +1,4 @@
--module(pgsql_sup).
+-module(model_sup).
 
 -behaviour(supervisor).
 

@@ -1,10 +1,10 @@
-{application, pgsql, [
-  {description, "Erlang to PostgreSQL converter"}
+{application, model, [
+  {description, "Erlang maps relational mapper"}
   ,{vsn, "0.1.0"}
   ,{applications, [
       kernel
       ,stdlib
     ]}
-  ,{modules,[model,pgsql]}
+  ,{modules,[model,model_pgsql]}
   ,{env,[]}
  ]}.

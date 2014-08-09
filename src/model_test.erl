@@ -1,7 +1,8 @@
--module(pgsql_tests).
+-module(model_test).
 
 -export([
-  run/0
+  test/0
+  ,run/0
   ,print/2
 ]).
 
@@ -22,6 +23,10 @@
 %% -----------------------------------------------------------------------------
 
 run() ->
+  
+  model:save().
+
+test() ->
   print('create_schema/1',pgsql:create_schema(?SCHEMA)),
   print('create_schema/2',pgsql:create_schema(?SCHEMA,['ifnotexists'])),
   print('create_index/3',pgsql:create_index(someindex,sometab,[col1,col2])),
