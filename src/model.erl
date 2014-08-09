@@ -7,21 +7,56 @@
   ,tablespace/0
 ]).
 
--include("models.hrl").
+-behaviour(model_interface).
+
+-export([
+  save/2
+  ,delete/2
+  ,find/2
+]).
+
+
+%% -----------------------------------------------------------------------------
+
+save(Name,Map) ->
+  save(Name,Map,get_module()).
+save(Name,Map,Module) ->
+  Module:save(Name,Map).
+
+delete(_Name,_Map) ->
+  ok.
+
+find(_Name,_Map) ->
+  ok.
+
+%% -----------------------------------------------------------------------------
+
+
+
 
 %% -----------------------------------------------------------------------------
 
 db_type() ->
-  pgsql.
+  {ok,Type} = application:get_env(model,db_type),
+  Type.
 
 tablespace() ->
-  lamazone.
+  {ok,Tablespace} = application:get_env(model,tablespace),
+  Tablespace.
+
+get_module() ->
+  list_to_atom(atom_to_list(?MODULE) ++ "_" ++ atom_to_list(db_type())).
+
+models() ->
+  {ok,Models} = application:get_env(model,models),
+  Models.
 
 create() ->
-  create(#models{}).
+  create(models()).
 
-create(Model) ->
-  Map = Model#models.address,
-  io:fwrite("~p~n",[maps:keys(Map)]),
+create(Models) ->
+  lists:foldl(fun(E,Acc) ->
+    io:fwrite("~p~n",[E])
+  end,[],Models),
   io:fwrite("~p~n",[db_type()]),
   io:fwrite("~p~n",[tablespace()]).
