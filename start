@@ -1,1 +1,1 @@
-erl -pa ./ebin
+erl -pa ./ebin -eval "application:start(pgsql)" -config model

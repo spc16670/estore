@@ -5,4 +5,6 @@
       kernel
       ,stdlib
     ]}
+  ,{modules,[model,pgsql]}
+  ,{env,[]}
  ]}.
