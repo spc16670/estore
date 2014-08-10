@@ -31,25 +31,37 @@
 -behaviour(model_interface).
 
 -export([
-  save/2
-  ,delete/2
+  make/1
+  ,save/1
+  ,delete/1
   ,find/2
 ]).
 
 -include("pgsql.hrl").
+-include("models.hrl").
+
+-compile({parse_transform,parse_records}).
+%% -----------------------------------------------------------------------------
+
+make(_Atom) ->
+  ok.
+
+save(_Record) ->  
+  ok.
+
+delete(_Name) ->
+  ok.
+
+find(_Name,_Conditions) ->
+  ok.
 
 %% -----------------------------------------------------------------------------
 
-save(_Name,_Map) ->
-  ok.
+init() ->
+  Records = records().
 
-delete(_Name,_Map) ->
-  ok.
 
-find(_Name,_Map) ->
-  ok.
 
-%% -----------------------------------------------------------------------------
 
 create_test() ->
   Name = sample,   

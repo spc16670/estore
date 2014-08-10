@@ -10,29 +10,31 @@
 -behaviour(model_interface).
 
 -export([
-  save/2
-  ,delete/2
+  make/1
+  ,save/1
+  ,delete/1
   ,find/2
 ]).
 
+-include("models.hrl").
 
 %% -----------------------------------------------------------------------------
 
-save(Name,Map) ->
-  save(Name,Map,get_module()).
-save(Name,Map,Module) ->
-  Module:save(Name,Map).
+make(Name) ->
+  make(Name,get_module()).
+make(Name,Module) ->
+  Module:make(Name).
 
-delete(_Name,_Map) ->
+save(Record) ->
+  save(Record,get_module()).
+save(Record,Module) ->
+  Module:save(Record).
+
+delete(_Name) ->
   ok.
 
-find(_Name,_Map) ->
+find(_Name,_Conditions) ->
   ok.
-
-%% -----------------------------------------------------------------------------
-
-
-
 
 %% -----------------------------------------------------------------------------
 
