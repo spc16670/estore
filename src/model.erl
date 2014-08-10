@@ -10,7 +10,8 @@
 -behaviour(model_interface).
 
 -export([
-  make/1
+  init/0
+  ,make/1
   ,save/1
   ,delete/1
   ,find/2
@@ -19,6 +20,11 @@
 -include("models.hrl").
 
 %% -----------------------------------------------------------------------------
+
+init() ->
+  init(get_module()).
+init(Module) ->
+  Module:init().
 
 make(Name) ->
   make(Name,get_module()).

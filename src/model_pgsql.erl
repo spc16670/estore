@@ -31,7 +31,8 @@
 -behaviour(model_interface).
 
 -export([
-  make/1
+  init/0
+  ,make/1
   ,save/1
   ,delete/1
   ,find/2
@@ -41,10 +42,13 @@
 -include("models.hrl").
 
 -compile({parse_transform,parse_records}).
+
+-define(SCHEMA,model:tablespace()).
+
 %% -----------------------------------------------------------------------------
 
-make(_Atom) ->
-  ok.
+make(Name) ->
+ make_model(Name).
 
 save(_Record) ->  
   ok.
@@ -58,8 +62,66 @@ find(_Name,_Conditions) ->
 %% -----------------------------------------------------------------------------
 
 init() ->
-  Records = records().
+  create_schema(?SCHEMA),
+  Models = convert_models(),
+  create_table(Model).
 
+covert_models() ->
+  lists:foldl(fun(E,Acc) ->
+     Acc ++ [convert_fields(E)]
+  end,[],records()).
+
+convert_model(Name) ->
+  convert_fields(Name).
+
+convert_fields(Name) ->
+  Fields = lists:foldl(fun(E,Acc) -> 
+    Acc ++ [{E,get_value(E,new_record(Name))}]
+  end,[],fields(Name)),
+  {Name,Fields}.
+
+%% -----------------------------------------------------------------------------
+
+make_model(Name) ->
+  make_model(fields(Name),new_record(Name)).
+
+make_model([F|Fs],Record) ->
+  R = set_value(F,undefined,Record),
+  make_model(Fs,R);
+make_model([],Record) ->
+  Record.
+
+
+%% -----------------------------------------------------------------------------
+
+create_schema(undefined) ->
+  ok;
+create_schema(S) ->
+  create_schema(S,undefined).
+create_schema(S,Op) ->
+  "CREATE SCHEMA " ++ options_to_string(ifnotexists,Op) ++ " " ++ value_to_string(S) ++ ";".
+
+%% -----------------------------------------------------------------------------
+
+create_table(Record) ->
+ 
+
+
+create_table(Schema,Name,Fields) ->
+  create_table(Schema,Name,Fields,undefined).
+create_table(Schema,Name,Fields,Constraints) ->
+  create_table(Schema,Name,Fields,Constraints,undefined).
+create_table(Schema,Name,Fields,Constraints,Opts) ->
+  Stmt = create_table(#model{name=Name,schema=Schema,fields=Fields},Opts) 
+  ++ "\n" ++ add_constraint(Schema,Name,Constraints),
+  transaction(Stmt).
+
+create_table(Name,Fields) when is_atom(Name)->
+  create_table(undefined,Name,Fields);
+create_table(#model{name=N,schema=S,fields=Fs} = _T,Opts) -> 
+  "CREATE TABLE " ++ options_to_string(ifnotexists,Opts) ++ " " 
+  ++ has_value(schema,S) ++ value_to_string(N) 
+  ++ " (" ++ field_to_string(Fs) ++ "\n);".
 
 
 
@@ -88,27 +150,6 @@ create_test() ->
   R = create_table(Name,Schema,Fields,Constraints),
   io:fwrite("~s~n",[R]),
   R.
-
-create_schema(S) ->
-  create_schema(S,undefined).
-create_schema(S,Op) ->
-  "CREATE SCHEMA " ++ options_to_string(ifnotexists,Op) ++ " " ++ value_to_string(S) ++ ";".
-
-create_table(Schema,Name,Fields) ->
-  create_table(Schema,Name,Fields,undefined).
-create_table(Schema,Name,Fields,Constraints) ->
-  create_table(Schema,Name,Fields,Constraints,undefined).
-create_table(Schema,Name,Fields,Constraints,Opts) ->
-  Stmt = create_table(#model{name=Name,schema=Schema,fields=Fields},Opts) 
-  ++ "\n" ++ add_constraint(Schema,Name,Constraints),
-  transaction(Stmt).
-
-create_table(Name,Fields) when is_atom(Name)->
-  create_table(undefined,Name,Fields);
-create_table(#model{name=N,schema=S,fields=Fs} = _T,Opts) -> 
-  "CREATE TABLE " ++ options_to_string(ifnotexists,Opts) ++ " " 
-  ++ has_value(schema,S) ++ value_to_string(N) 
-  ++ " (" ++ field_to_string(Fs) ++ "\n);".
 
 drop_table(T) ->
   drop_table(undefined,T).

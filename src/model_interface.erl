@@ -1,5 +1,8 @@
 -module(model_interface).
 
+-callback init() -> 
+  'ok'|tuple('error', Reason :: string()).
+ 
 -callback make(Name :: record()) -> 
   'ok'|tuple('error', Reason :: string()).
  
