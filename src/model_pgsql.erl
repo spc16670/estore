@@ -1,10 +1,7 @@
 -module(model_pgsql).
 
 -export([
-  create_schema/1
-  ,create_schema/2
-  ,create_tables/1
-  ,create_table/2
+  create_table/2
   ,create_index/3
   ,create_index/4
   ,select/1
@@ -35,6 +32,14 @@
   ,find/2
 ]).
 
+-export([
+  create_schema/1
+  ,drop_tables/0
+  ,create_tables/1
+  ,one_to_many/2
+]).
+
+
 -include("models.hrl").
 
 -compile({parse_transform,parse_records}).
@@ -56,6 +61,7 @@ find(_Name,_Conditions) ->
   ok.
 
 init() ->
+  drop_tables(),
   create_schema(?SCHEMA),
   create_tables(models()).
 
@@ -83,8 +89,24 @@ create_schema(undefined) ->
 create_schema(S) ->
   create_schema(S,[{ifexists,false}]).
 create_schema(S,Op) ->
-  "CREATE SCHEMA " ++ options_to_string(options,Op) 
+  "CREATE SCHEMA " ++ options_to_string({options,ifexists},Op) 
   ++ " " ++ value_to_string(S) ++ ";".
+
+%% -----------------------------------------------------------------------------
+
+drop_tables() ->
+  lists:foldl(fun(E,Acc) ->
+    Acc ++ [drop_table(E)] 
+  end,[],records()). 
+
+drop_table(T) ->
+  drop_table(?SCHEMA,T).
+drop_table(S,T) ->
+  drop_table(S,T,[{ifexists,true},{cascade,true}]).
+drop_table(S,T,Op) ->
+  "DROP TABLE " ++ options_to_string({options,ifexists},Op) ++ " " 
+  ++ has_value(schema,S) ++ value_to_string(T) ++ " " 
+  ++ options_to_string({options,cascade},Op) ++ ";".
 
 %% -----------------------------------------------------------------------------
 
@@ -98,50 +120,58 @@ create_table(Record) ->
 
 create_table(Record,Options) ->
   Name = hd(tuple_to_list(Record)),
-  "CREATE TABLE " ++ options_to_string(options,Options) ++ " " 
+  Fields = string:strip(string:strip(convert_fields(Name),both,$ ),both,$,),
+  create_table(Name,Fields,Options).
+create_table(Name,Fields,Options) ->
+  "CREATE TABLE " ++ options_to_string({options,ifexists},Options) ++ " " 
   ++ has_value(schema,?SCHEMA) ++ value_to_string(Name) 
-  ++ " (" ++ string:strip(string:strip(convert_fields(Name),both,$ ),both,$,) ++ "\n);".
+  ++ " (" ++ Fields ++ "\n);".
 
   %% Stmt ++  "\n" ++ add_constraint(Schema,Name,Constraints),
   %% transaction(Stmt).
 
+%% -----------------------------------------------------------------------------
+
 convert_fields(Name) ->
   lists:foldl(fun(E,Acc) -> 
-    FldTuple = {E,get_value(E,new_record(Name))},
+    FldTuple = {{Name,E},get_value(E,new_record(Name))},
     Acc ++ convert_field(FldTuple)
   end,[],fields(Name)).
   
-convert_field({FldName,FldOpts}) ->
-  value_to_string(FldName) ++ " " ++ 
-  string:strip(options_to_string(field,FldOpts),both,$ ) ++ ", ".
+convert_field({{Table,Field},FldOpts}) ->
+  value_to_string(Field) ++ " " ++ 
+  string:strip(options_to_string({field,{Table,Field}},FldOpts),both,$ ) ++ ", ".
 
-options_to_string(field,FldOpts) ->
+options_to_string({field,{T,F}},FldOpts) ->
   options_to_string(type,proplists:get_value(type,FldOpts)) ++ " " ++
-  options_to_string(constraints,proplists:get_value(constraints,FldOpts));
+  options_to_string({constraints,{T,F}},proplists:get_value(constraints,FldOpts));
 
-options_to_string(options,{ifexists,true}) ->
+options_to_string({options,cascade},true) ->
+  "CASCADE";
+options_to_string({options,ifexists},true) ->
   "IF " ++ value_to_string(exists); 
-options_to_string(options,{ifexists,false}) ->
+options_to_string({options,ifexists},false) ->
   "IF NOT " ++ value_to_string(exists);
-options_to_string(options,Options) ->
-  lists:foldl(fun(E,Acc) -> 
-    Acc ++ options_to_string(options,E)
-  end,[],Options);
+options_to_string({options,Key},Options) when is_list(Options) ->
+  options_to_string({options,Key},proplists:get_value(Key,Options));
+options_to_string({options,_},undefined) ->
+  [];
+options_to_string({options,_},_MissingClouse) ->
+  [];
 
-
-options_to_string(constraints,{one_to_many,Table}) ->
+options_to_string({constraints,{T,_F}},{one_to_many,Table}) ->
+  one_to_many(T,Table);
+options_to_string({constraints,{_T,_F}},{one_to_one,Table}) ->
   "REFERENCES " ++ value_to_string(Table) ++ " (id) ";
-options_to_string(constraints,{one_to_one,Table}) ->
-  "REFERENCES " ++ value_to_string(Table) ++ " (id) ";
-options_to_string(constraints,{null,false}) ->
+options_to_string({constraints,{_T,_F}},{null,false}) ->
   value_to_string('not') ++ " " ++ value_to_string(null)++ " ";
-options_to_string(constraints,{null,true}) ->
+options_to_string({constraints,{_T,_F}},{null,true}) ->
   value_to_string(null) ++ " ";
-options_to_string(constraints,undefined) ->
-  options_to_string(constraints,{null,true});
-options_to_string(constraints,ConstraintsList) ->
+options_to_string({constraints,{T,F}},undefined) ->
+  options_to_string({constraints,{T,F}},{null,true});
+options_to_string({constraints,{T,F}},ConstraintsList) ->
   lists:foldl(fun(E,Acc) -> 
-    Acc ++ options_to_string(constraints,E)
+    Acc ++ options_to_string({constraints,{T,F}},E)
   end,[],ConstraintsList);
 
 options_to_string(varchar,{length,Size}) ->
@@ -149,6 +179,8 @@ options_to_string(varchar,{length,Size}) ->
 
 options_to_string(type,date) ->
   " " ++ value_to_string(date) ++ " ";
+options_to_string(type,bigserial) ->
+  " " ++ value_to_string(bigserial) ++ " ";
 options_to_string(type,{Type,FldOpts}) ->
   value_to_string(Type) ++ " " ++ lists:foldl(fun(E,Acc) -> 
     Acc ++ options_to_string(Type,E)
@@ -159,14 +191,26 @@ options_to_string(_Key,undefined) ->
 
 %% -----------------------------------------------------------------------------
 
-drop_table(T) ->
-  drop_table(undefined,T).
-drop_table(S,T) ->
-  drop_table(S,T,[{ifexists,true}]).
-drop_table(S,T,Op) ->
-  "DROP TABLE " ++ options_to_string(options,Op) ++ " " 
-  ++ has_value(schema,S) ++ value_to_string(T) 
-  ++ options_to_string(cascade,Op) ++ ";".
+one_to_many(Table,Ref) ->
+  LookupTableName = value_to_string(Table) ++ "_" ++ value_to_string(Ref),
+  FieldTuples = [
+    {{LookupTableName,Table},[
+      {type,bigserial}
+      ,{constraints,[{one_to_one,Table}]}
+    ]}
+    ,{{LookupTableName,Ref},[
+      {type,bigserial}
+      ,{constraints,[{one_to_one,Ref}]}
+    ]}
+  ],
+  FieldsStr = lists:foldl(fun(E,Acc) -> 
+    Acc ++ convert_field(E)
+  end,[],FieldTuples),  
+  Fields = string:strip(string:strip(FieldsStr,both,$ ),both,$,),
+  create_table(LookupTableName,Fields,[{ifexists,false}]),
+  [].
+
+%% -----------------------------------------------------------------------------
 
 select({S,T,A}) ->
   select([{S,T,A}]);
