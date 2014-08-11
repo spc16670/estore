@@ -12,17 +12,14 @@
   ,select/3
   ,select/4
   ,select/5
-  ,create_test/0
   ,select_index/1
   ,select_index/2
-  ,tuples_to_fields/2
   ,transaction/1
   ,rollback/0
   ,drop_table/1
   ,drop_table/2
   ,drop_table/3
   ,table_info/3
-  ,get_model/3
   ,where/1
   ,where_to_string/1
 ]).
@@ -32,12 +29,12 @@
 -export([
   init/0
   ,make/1
+  ,models/0
   ,save/1
   ,delete/1
   ,find/2
 ]).
 
--include("pgsql.hrl").
 -include("models.hrl").
 
 -compile({parse_transform,parse_records}).
@@ -58,8 +55,6 @@ delete(_Name) ->
 find(_Name,_Conditions) ->
   ok.
 
-%% -----------------------------------------------------------------------------
-
 init() ->
   create_schema(?SCHEMA),
   create_tables(models()).
@@ -68,15 +63,6 @@ models() ->
   lists:foldl(fun(E,Acc) ->
      Acc ++ [new_record(E)]
   end,[],records()).
-
-convert_model(Name) ->
-  convert_fields(Name).
-
-convert_fields(Name) ->
-  Fields = lists:foldl(fun(E,Acc) -> 
-    Acc ++ [{E,get_value(E,new_record(Name))}]
-  end,[],fields(Name)),
-  {Name,Fields}.
 
 %% -----------------------------------------------------------------------------
 
@@ -95,9 +81,9 @@ make_model([],Record) ->
 create_schema(undefined) ->
   ok;
 create_schema(S) ->
-  create_schema(S,[ifnotexists]).
+  create_schema(S,[{ifexists,false}]).
 create_schema(S,Op) ->
-  "CREATE SCHEMA " ++ options_to_string(ifnotexists,Op) 
+  "CREATE SCHEMA " ++ options_to_string(options,Op) 
   ++ " " ++ value_to_string(S) ++ ";".
 
 %% -----------------------------------------------------------------------------
@@ -111,52 +97,76 @@ create_table(Record) ->
   create_table(Record,[{ifexists,false}]).
 
 create_table(Record,Options) ->
-  {Name,_} = Record,
-  Stmt = "CREATE TABLE " ++ options_to_string(ifnotexists,Options) ++ " " 
+  Name = hd(tuple_to_list(Record)),
+  "CREATE TABLE " ++ options_to_string(options,Options) ++ " " 
   ++ has_value(schema,?SCHEMA) ++ value_to_string(Name) 
-  ++ " (" ++ field_to_string(Fs) ++ "\n);",
+  ++ " (" ++ string:strip(string:strip(convert_fields(Name),both,$ ),both,$,) ++ "\n);".
 
-  Stmt ++  "\n" ++ add_constraint(Schema,Name,Constraints),
-  transaction(Stmt).
+  %% Stmt ++  "\n" ++ add_constraint(Schema,Name,Constraints),
+  %% transaction(Stmt).
 
- 
-%% -----------------------------------------------------------------------------
-
-
-
-create_test() ->
-  Name = sample,   
-  Schema = lamazone, 
-  Fields = [
-    #{name=>id,type=>bigserial}
-    ,#{name=>name,type=>varchar,length=>50,null=>yes}
-    ,#{name=>age,type=>integer}
-    ,#{name=>weight,type=>numeric,precision=>14,scale=>2}
-  ],
+convert_fields(Name) ->
+  lists:foldl(fun(E,Acc) -> 
+    FldTuple = {E,get_value(E,new_record(Name))},
+    Acc ++ convert_field(FldTuple)
+  end,[],fields(Name)).
   
-  %Fields = [
-  %  #field{name=id,type=bigserial,null=no}
-  %  ,#field{name=name,type=varchar,length=50,null=yes}
-  %  ,#field{name=age,type=integer,null=no}
-  %  ,#field{name=price,type=money,null=no}
-  %  ,#field{name=weight,type=numeric,length={14,2},null=no}
-  %],
-  Constraints = [
-    #pk{id=undefined,fields=[id]}
-    ,#unique{id=undefined,fields=[name]}
-    %,#fk{id=some_name_fk,on_delete_cascade=yes,fields=[age],r_schema=Schema,r_table=sample2,r_fields=[year]}
-  ],
-  R = create_table(Name,Schema,Fields,Constraints),
-  io:fwrite("~s~n",[R]),
-  R.
+convert_field({FldName,FldOpts}) ->
+  value_to_string(FldName) ++ " " ++ 
+  string:strip(options_to_string(field,FldOpts),both,$ ) ++ ", ".
+
+options_to_string(field,FldOpts) ->
+  options_to_string(type,proplists:get_value(type,FldOpts)) ++ " " ++
+  options_to_string(constraints,proplists:get_value(constraints,FldOpts));
+
+options_to_string(options,{ifexists,true}) ->
+  "IF " ++ value_to_string(exists); 
+options_to_string(options,{ifexists,false}) ->
+  "IF NOT " ++ value_to_string(exists);
+options_to_string(options,Options) ->
+  lists:foldl(fun(E,Acc) -> 
+    Acc ++ options_to_string(options,E)
+  end,[],Options);
+
+
+options_to_string(constraints,{one_to_many,Table}) ->
+  "REFERENCES " ++ value_to_string(Table) ++ " (id) ";
+options_to_string(constraints,{one_to_one,Table}) ->
+  "REFERENCES " ++ value_to_string(Table) ++ " (id) ";
+options_to_string(constraints,{null,false}) ->
+  value_to_string('not') ++ " " ++ value_to_string(null)++ " ";
+options_to_string(constraints,{null,true}) ->
+  value_to_string(null) ++ " ";
+options_to_string(constraints,undefined) ->
+  options_to_string(constraints,{null,true});
+options_to_string(constraints,ConstraintsList) ->
+  lists:foldl(fun(E,Acc) -> 
+    Acc ++ options_to_string(constraints,E)
+  end,[],ConstraintsList);
+
+options_to_string(varchar,{length,Size}) ->
+   "(" ++  value_to_string(Size) ++ ")";
+
+options_to_string(type,date) ->
+  " " ++ value_to_string(date) ++ " ";
+options_to_string(type,{Type,FldOpts}) ->
+  value_to_string(Type) ++ " " ++ lists:foldl(fun(E,Acc) -> 
+    Acc ++ options_to_string(Type,E)
+  end,[],FldOpts);
+
+options_to_string(_Key,undefined) ->
+  [].
+
+%% -----------------------------------------------------------------------------
 
 drop_table(T) ->
   drop_table(undefined,T).
 drop_table(S,T) ->
-  drop_table(S,T,[]).
+  drop_table(S,T,[{ifexists,true}]).
 drop_table(S,T,Op) ->
-  "DROP TABLE " ++ options_to_string(ifexists,Op) ++ " " 
-  ++ table_to_string({S,T,undefined}) ++ " " ++ options_to_string(cascade,Op) ++ ";".
+  "DROP TABLE " ++ options_to_string(options,Op) ++ " " 
+  ++ has_value(schema,S) ++ value_to_string(T) 
+  ++ options_to_string(cascade,Op) ++ ";".
 
 select({S,T,A}) ->
   select([{S,T,A}]);
@@ -201,7 +211,7 @@ select({S,T},Fs,J,W,G) when is_atom(T) ->
 select(T,Fs,J,W,G) when is_atom(T) ->
   select({undefined,T,T},Fs,J,W,G);
 select(Ts,Fs,J,W,G) when is_list(Ts) ->
-  "SELECT " ++ field_to_string(Fs) ++ " FROM " ++ table_to_string(Ts) 
+  "SELECT " ++ field_to_string(Fs) ++ " FROM " 
   ++ " " ++ join(J) ++ "" ++ where(W) ++ groupby(G) ++ ";".
  
 create_index(N,T,Cs) when is_atom(T) ->
@@ -210,7 +220,8 @@ create_index(N,T,Cs,Ops) when is_atom(T) ->
   create_index(N,{undefined,T},Cs,Ops);
 create_index(N,{S,T},Cs,Ops) ->
   "CREATE INDEX " ++ options_to_string(nolock,Ops) ++ " " ++ value_to_string(N) 
-  ++ " ON " ++ table_to_string({S,T,undefined}) ++ " (" ++ field_to_string(Cs) ++ ");".
+  ++ " ON " ++ has_value(schema,S) ++ value_to_string(T) 
+  ++ " (" ++ field_to_string(Cs) ++ ");".
 
 select_index(I) ->
   select_index(undefined,I).
@@ -231,16 +242,6 @@ transaction(Stmt) ->
 rollback() ->
   "ROLLBACK;".
 
-get_model(Name,Schema,Fs) ->
-  Fields = lists:foldl(fun({I,O,T,N,M,P,S},Acc) -> 
-    Acc ++ [#field{name=result_to_value({atom,I})
-      ,type=result_to_value({atom,T})
-      ,length=result_to_value({T,M,P,S})
-      ,null=result_to_value({atom,N})
-      ,position=result_to_value({integer,O})}]
-    end,[],Fs),
-  #model{name=Name,schema=Schema,fields=Fields}.
-
 table_info(D,S,T) ->
   select({information_schema,columns},[column_name,ordinal_position,data_type
     ,is_nullable,character_maximum_length,numeric_precision,numeric_scale]
@@ -249,15 +250,6 @@ table_info(D,S,T) ->
 
 %% ------------------------------------------------------------------------------
 
-table_to_string(Ts) when is_list(Ts) ->
-  table_to_string(Ts,hd(Ts));
-table_to_string({S,T,A}) ->
-  has_value(schema,S) ++ value_to_string(T) ++ " " ++ value_to_string(A).
-
-table_to_string(Ts,T1) when is_atom(T1) ->
-  field_to_string(Ts);
-table_to_string(Ts,T1) when is_tuple(T1) ->
-  string:strip(lists:foldl(fun(E,Acc) -> Acc ++ "," ++ table_to_string(E) end,[],Ts),left,$,).
 
 %% GROUP BY
 
@@ -278,8 +270,8 @@ join_to_string(V) when is_atom(V) ->
   value_to_string(V);
 join_to_string({J,{T,A}}) when is_atom(J) ->
   join_to_string({J,{undefined,T,A}});
-join_to_string({J,{S,T,A}}) when is_atom(J) ->
-  value_to_string(J) ++ " " ++ table_to_string({S,T,A});
+join_to_string({J,{S,T,_A}}) when is_atom(J) ->
+  value_to_string(J) ++ has_value(schema,S) ++ value_to_string(T) ++ " ";
 join_to_string({J,C}) when is_atom(J) andalso is_atom(C) ->
   where_to_string({J,C});
 join_to_string({F1,T,F2}) ->
@@ -379,33 +371,33 @@ has_value(null,V) when V =:= no orelse V =:= undefined ->
 has_value(_,_) ->
   [].
 
-default_name({Key,T},N) when N =:= undefined->
-  value_to_string(Key) ++ "_" ++ value_to_string(T) ++ "_" 
-    ++ value_to_string(now());
-default_name({_Key,_T},N) ->
-  value_to_string(N).
+%default_name({Key,T},N) when N =:= undefined->
+%  value_to_string(Key) ++ "_" ++ value_to_string(T) ++ "_" 
+%    ++ value_to_string(now());
+%default_name({_Key,_T},N) ->
+%  value_to_string(N).
 
-add_constraint(S,N,Cs) when Cs /= undefined ->
-  lists:foldl(fun(E,Acc) -> Acc ++ 
-    "ALTER TABLE " ++ has_value(schema,S) ++ value_to_string(N) 
-    ++ " ADD CONSTRAINT " ++ constraint_to_string(N,E)
-  ++ "\n" end,[],Cs);
-add_constraint(_S,_N,_C) ->
-  [].
+%add_constraint(S,N,Cs) when Cs /= undefined ->
+%  lists:foldl(fun(E,Acc) -> Acc ++ 
+%    "ALTER TABLE " ++ has_value(schema,S) ++ value_to_string(N) 
+%    ++ " ADD CONSTRAINT " ++ constraint_to_string(N,E)
+%  ++ "\n" end,[],Cs);
+%add_constraint(_S,_N,_C) ->
+%  [].
  
-constraint_to_string(T,#pk{id=N,fields=Fs} = _C) ->
-  default_name({pk,T},N) ++ " PRIMARY KEY (" ++ field_to_string(Fs) ++ ");";
-constraint_to_string(T,#unique{id=N,fields=Fs} = _C) ->
-  default_name({uq,T},N) ++ " UNIQUE (" ++ field_to_string(Fs) ++ ");";
-constraint_to_string(T,#fk{id=N,on_delete_cascade=Odc,fields=Fs,r_schema=Rs,r_table=Rt,r_fields=RFs} = _C) ->
-  default_name({fk,T},N) ++ " FOREIGN KEY (" ++ field_to_string(Fs) 
-  ++ ") REFERENCES " ++  has_value(schema,Rs) ++ value_to_string(Rt) ++ " (" ++ field_to_string(RFs) 
-  ++ ") " ++ has_value(odc,Odc) ++ ";".
-
-options_to_string(K,Opts) when is_list(Opts) ->
-  case lists:member(K,Opts) of true -> proplists:get_value(K,options_map()); _ -> [] end;
-options_to_string(_K,_Opts) ->
-  [].
+%constraint_to_string(T,#pk{id=N,fields=Fs} = _C) ->
+%  default_name({pk,T},N) ++ " PRIMARY KEY (" ++ field_to_string(Fs) ++ ");";
+%constraint_to_string(T,#unique{id=N,fields=Fs} = _C) ->
+%  default_name({uq,T},N) ++ " UNIQUE (" ++ field_to_string(Fs) ++ ");";
+%constraint_to_string(T,#fk{id=N,on_delete_cascade=Odc,fields=Fs,r_schema=Rs,r_table=Rt,r_fields=RFs} = _C) ->
+%  default_name({fk,T},N) ++ " FOREIGN KEY (" ++ field_to_string(Fs) 
+%  ++ ") REFERENCES " ++  has_value(schema,Rs) ++ value_to_string(Rt) ++ " (" ++ field_to_string(RFs) 
+%  ++ ") " ++ has_value(odc,Odc) ++ ";".
+%
+%options_to_string(K,Opts) when is_list(Opts) ->
+%  case lists:member(K,Opts) of true -> proplists:get_value(K,options_map()); _ -> [] end;
+%options_to_string(_K,_Opts) ->
+%  [].
 
 options_map() -> [
     {nolock,"CONCURRENTLY"}
@@ -414,10 +406,6 @@ options_map() -> [
     ,{ifnotexists,"IF NOT EXISTS"}
   ].
 
-tuples_to_fields([{I,T,L}|Ts],Result) ->
-  tuples_to_fields(Ts,Result ++ [#field{name=I,type=T,length=L}]);
-tuples_to_fields([],Result) ->
-  Result.
 
   
 
