@@ -40,7 +40,7 @@
 ]).
 
 
--include("models.hrl").
+-include("models_pgsql.hrl").
 
 -compile({parse_transform,parse_records}).
 

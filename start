@@ -1,1 +1,3 @@
-erl -pa ./ebin -eval "application:start(model)" -config model
+#!/bin/bash
+DEPS=$(pwd)/deps/*/ebin
+erl -pa ./ebin $DEPS -eval "application:start(model)" -config model

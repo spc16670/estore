@@ -2,7 +2,7 @@ REBAR = ./rebar
 
 .PHONY: all compile test clean get-deps build-plt dialyze
 
-all: compile
+all: compile get-deps
 
 compile:
 	@$(REBAR) compile
