@@ -1,20 +1,20 @@
 -module(model_interface).
 
--callback init() -> 
+-callback init(Adapter :: atom()) -> 
   'ok'|tuple('error', Reason :: string()).
 
- -callback models() -> 
+-callback models(Adapter :: atom()) -> 
   Records :: list() | tuple('error', Reason :: string()).
  
--callback make(Name :: record()) -> 
+-callback new(Adapter :: atom(),Record :: record()) -> 
   'ok'|tuple('error', Reason :: string()).
  
--callback save(Name :: record()) -> 
+-callback save(Adapter :: atom(),Record :: record()) -> 
   'ok'|tuple('error', Reason :: string()).
 
--callback delete(Name :: record()) -> 
+-callback delete(Adapter :: atom(),Record :: record()) -> 
   'ok'|tuple('error', Reason :: string()).
 
--callback find(Name :: atom(), Conditions :: list()) -> 
+-callback find(Adapter :: atom(),Name :: atom(),Conditions :: list()) -> 
   Records :: list() | tuple('error', Reason :: string()).
 

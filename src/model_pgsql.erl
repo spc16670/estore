@@ -21,11 +21,10 @@
   ,where_to_string/1
 ]).
 
--behaviour(model_interface).
 
 -export([
   init/0
-  ,make/1
+  ,new/1
   ,models/0
   ,save/1
   ,delete/1
@@ -44,12 +43,12 @@
 
 -compile({parse_transform,parse_records}).
 
--define(SCHEMA,model:tablespace()).
+-define(SCHEMA,model:get_db_config(pg_sql,tablespace)).
 
 %% -----------------------------------------------------------------------------
 
-make(Name) ->
- make_model(Name).
+new(Name) ->
+ new_model(Name).
 
 save(_Record) ->  
   ok.
@@ -72,13 +71,13 @@ models() ->
 
 %% -----------------------------------------------------------------------------
 
-make_model(Name) ->
-  make_model(fields(Name),new_record(Name)).
+new_model(Name) ->
+  new_model(fields(Name),new_record(Name)).
 
-make_model([F|Fs],Record) ->
+new_model([F|Fs],Record) ->
   R = set_value(F,undefined,Record),
-  make_model(Fs,R);
-make_model([],Record) ->
+  new_model(Fs,R);
+new_model([],Record) ->
   Record.
 
 
