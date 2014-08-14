@@ -20,5 +20,13 @@ start_link() ->
 %% ===================================================================
 
 init([]) ->
-  {ok,{{one_for_one, 5,10},[]}}.
+  Pools = model:get_db_config(pgsql,pools),
+  io:fwrite("~p~n",[Pools]),
+  PoolSpecs = lists:map(fun({Name, SizeArgs, WorkerArgs}) ->
+    PoolArgs = [{name, {local, Name}},
+      {worker_module, pgsql_worker}] ++ SizeArgs,
+      poolboy:child_spec(Name, PoolArgs, WorkerArgs)
+    end, Pools),
+  io:fwrite("~p~n",[PoolSpecs]),
+  {ok,{{one_for_one, 5,10},PoolSpecs}}.
 
