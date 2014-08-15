@@ -68,7 +68,7 @@ find(_Name,_Conditions) ->
   ok.
 
 init() ->
-  drop_tables(),
+  drop_schema(),
   create_schema(?SCHEMA),
   create_tables(models()).
 
@@ -103,6 +103,16 @@ new_model([F|Fs],Record) ->
   new_model(Fs,R);
 new_model([],Record) ->
   Record.
+
+%% -----------------------------------------------------------------------------
+
+drop_schema() ->
+  drop_schema(?SCHEMA,[{ifexists,false},{cascade,true}]).
+
+drop_schema(Schema,Opts) ->
+  "DROP SCHEMA " ++ options_to_string({options,ifexists},Opts) ++ " "
+  ++ value_to_string(Schema) ++ " "
+  ++ options_to_string({options,cascade},Opts) ++ ";".
 
 
 %% -----------------------------------------------------------------------------
