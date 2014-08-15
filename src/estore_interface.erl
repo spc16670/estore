@@ -1,4 +1,4 @@
--module(model_interface).
+-module(estore_interface).
 
 -callback init(Adapter :: atom()) -> 
   'ok'|tuple('error', Reason :: string()).

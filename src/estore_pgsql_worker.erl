@@ -1,4 +1,4 @@
--module(pgsql_worker).
+-module(estore_pgsql_worker).
 -behaviour(gen_server).
 -behaviour(poolboy_worker).
 

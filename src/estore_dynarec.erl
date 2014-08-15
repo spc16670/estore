@@ -38,7 +38,7 @@
 %%% a copy of the New BSD license with this software. If not, it can be
 %%% retrieved from: http://www.opensource.org/licenses/bsd-license.php
 %%-------------------------------------------------------------------
--module(parse_records).
+-module(estore_dynarec).
 -author('Juan Jose Comellas <juanjo@comellas.org>').
 -author('Mahesh Paolini-Subramanya <mahesh@aptela.com>').
 

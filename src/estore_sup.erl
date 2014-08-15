@@ -1,4 +1,4 @@
--module(model_sup).
+-module(estore_sup).
 
 -behaviour(supervisor).
 
@@ -21,10 +21,9 @@ start_link() ->
 
 init([]) ->
   Pools = model:get_db_config(pgsql,pools),
-  io:fwrite("~p~n",[Pools]),
   PoolSpecs = lists:map(fun({Name, SizeArgs, WorkerArgs}) ->
     PoolArgs = [{name, {local, Name}},
-      {worker_module, pgsql_worker}] ++ SizeArgs,
+      {worker_module, estore_pgsql_worker}] ++ SizeArgs,
       poolboy:child_spec(Name, PoolArgs, WorkerArgs)
     end, Pools),
   io:fwrite("~p~n",[PoolSpecs]),

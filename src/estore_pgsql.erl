@@ -1,4 +1,4 @@
--module(model_pgsql).
+-module(estore_pgsql).
 
 -export([
   create_table/2
@@ -44,11 +44,12 @@
   ,equery/3
 ]).
 
--include("models_pgsql.hrl").
+-include("estore.hrl").
+-include("pgsql.hrl").
 
--compile({parse_transform,parse_records}).
+-compile({parse_transform,estore_dynarec}).
 
--define(SCHEMA,model:get_db_config(pg_sql,tablespace)).
+-define(SCHEMA,estore:get_db_config(pgsql,tablespace)).
 
 %% -----------------------------------------------------------------------------
 
@@ -82,7 +83,7 @@ squery(PoolName, Sql) ->
 equery(PoolName, Stmt, Params) ->
   poolboy:transaction(PoolName, fun(Worker) ->
     gen_server:call(Worker, {equery, Stmt, Params})
-  end).
+  end). 
 
 %% -----------------------------------------------------------------------------
 

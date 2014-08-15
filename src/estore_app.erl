@@ -1,4 +1,4 @@
--module(model_app).
+-module(estore_app).
 
 -behaviour(application).
 
@@ -10,7 +10,7 @@
 %% ===================================================================
 
 start(_StartType, _StartArgs) ->
-  model_sup:start_link().
+  estore_sup:start_link().
 
 stop(_State) ->
     ok.

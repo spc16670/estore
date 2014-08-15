@@ -1,4 +1,4 @@
--module(model_test).
+-module(estore_test).
 
 -export([
   test/0
@@ -6,7 +6,6 @@
   ,print/2
 ]).
 
--include("pgsql.hrl").
 
 -define(SCHEMA,lamazone).
 -define(TABLE,shopper).
@@ -58,12 +57,6 @@ test() ->
 
   print('create_table/2 table,[field]',pgsql:create_table(?TABLE,[?FIELD])),
   print('create_table/3 schema,table,[field]',pgsql:create_table(?SCHEMA,?TABLE,[?FIELD])),
-  Constraints = [
-    #fk{id=sample_id,on_delete_cascade=yes,fields=[?FIELD],r_schema=?SCHEMA,r_table=?TABLE2,r_fields=[?FIELD2]}
-    ,#pk{id=sample_id,fields=[?FIELD2]}
-    ,#unique{id=sample_id,fields=[?FIELD2]}
-  ],
-  print('create_table/4 schema,table,[field],constraints',pgsql:create_table(?SCHEMA,?TABLE,[?FIELD],Constraints)),
   print('select_index/1 index',pgsql:select_index(?INDEX)),
   print('select_index/2 schema,index',pgsql:select_index(?SCHEMA,?INDEX)),
   print('table_info/3 db,schema,tb',pgsql:table_info(?DB,?SCHEMA,?TABLE)).

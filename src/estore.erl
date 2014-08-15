@@ -1,4 +1,4 @@
--module(model).
+-module(estore).
 
 -export([
   get_db_config/2
@@ -7,7 +7,7 @@
   ,get_value/3
 ]).
 
--behaviour(model_interface).
+-behaviour(estore_interface).
 
 -export([
   init/0
@@ -28,7 +28,8 @@
   ,find/3
 ]).
 
--include("models_pgsql.hrl").
+-include("estore.hrl").
+-include("pgsql.hrl").
 
 %% -----------------------------------------------------------------------------
 
@@ -68,7 +69,7 @@ get_module() ->
   list_to_atom(atom_to_list(?MODULE) ++ "_" ++ atom_to_list(get_config(default_adapter))).
 
 get_db_config(Adapter,Key) ->
-  {ok,Config} = application:get_env(model,adapters),
+  {ok,Config} = application:get_env(?APP,adapters),
   case lists:keyfind(Adapter,1,Config) of
     {_,AdapterConfig} -> 
       get_value(Key,AdapterConfig,undefined);
@@ -76,7 +77,7 @@ get_db_config(Adapter,Key) ->
   end.
 
 get_config(Key) ->
-  {ok,Config} = application:get_env(model,Key),
+  {ok,Config} = application:get_env(?APP,Key),
   case lists:keyfind(Key,1,Config) of
     {_,Value} -> Value;
     _ -> undefined
