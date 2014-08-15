@@ -1,9 +1,9 @@
 -module(estore_utils).
 
 -export([
-  get_module/2
+  get_module/0
+  ,get_db_config/2
   ,get_config/1
-  ,get_module/0
   ,get_value/3
 ]).
 
@@ -12,15 +12,18 @@
 get_module() ->
   list_to_atom(atom_to_list(?APP) ++ "_" ++ atom_to_list(get_config(adapter))).
 
+get_db_config(Db,Key) ->
+  DbConfig = get_value(Db,get_config(dbs),[]),
+  get_value(Key,DbConfig,undefined).
+
 get_config(Key) ->
-  {ok,Config} = application:get_env(?APP,Key),
-  case lists:keyfind(Key,1,Config) of
-    {_,Value} -> Value;
-    _ -> undefined
-  end.
+  {ok,Value} = application:get_env(?APP,Key),
+  Value.
 
 get_value(Key,PropList,Default) ->
   case lists:keyfind(Key,1,PropList) of
     {_,Value} -> Value;
     _ -> Default
   end.
+
+

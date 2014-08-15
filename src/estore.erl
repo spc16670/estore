@@ -1,15 +1,6 @@
 -module(estore).
 
 -export([
-  get_db_config/2
-  ,get_config/1
-  ,get_module/0
-  ,get_value/3
-]).
-
--behaviour(estore_interface).
-
--export([
   init/0
   ,models/0
   ,new/1
@@ -28,64 +19,40 @@
   ,find/3
 ]).
 
+-behaviour(estore_interface).
+
 -include("estore.hrl").
 -include("pgsql.hrl").
 
 %% -----------------------------------------------------------------------------
 
 init() ->
-  init(get_module()).
+  init(estore_utils:get_module()).
 init(Module) ->
   Module:init().
 
 models() ->
-  models(get_module()).
+  models(estore_utils:get_module()).
 models(Module) ->
   Module:models().
 
 new(Name) ->
-  new(get_module(),Name).
+  new(estore_utils:get_module(),Name).
 new(Module,Name) ->
   Module:new(Name).
 
 save(Record) ->
-  save(get_module(),Record).
+  save(estore_utils:get_module(),Record).
 save(Module,Record) ->
   Module:save(Record).
 
 delete(Record) ->
-  delete(get_module(),Record).
+  delete(estore_utils:get_module(),Record).
 delete(Module,Record) ->
   Module:save(Record).
 
 find(Name,Conditions) ->
-  find(get_module(),Name,Conditions).
+  find(estore_utils:get_module(),Name,Conditions).
 find(Module,Name,Conditions) ->
   Module:find(Name,Conditions).
-
-%% -----------------------------------------------------------------------------
-
-get_module() ->
-  list_to_atom(atom_to_list(?MODULE) ++ "_" ++ atom_to_list(get_config(default_adapter))).
-
-get_db_config(Adapter,Key) ->
-  {ok,Config} = application:get_env(?APP,adapters),
-  case lists:keyfind(Adapter,1,Config) of
-    {_,AdapterConfig} -> 
-      get_value(Key,AdapterConfig,undefined);
-    _ -> undefined
-  end.
-
-get_config(Key) ->
-  {ok,Config} = application:get_env(?APP,Key),
-  case lists:keyfind(Key,1,Config) of
-    {_,Value} -> Value;
-    _ -> undefined
-  end.
-
-get_value(Key,PropList,Default) ->
-  case lists:keyfind(Key,1,PropList) of
-    {_,Value} -> Value;
-    _ -> Default
-  end.
 

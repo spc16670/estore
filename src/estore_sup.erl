@@ -8,6 +8,8 @@
 %% Supervisor callbacks
 -export([init/1]).
 
+-include("estore.hrl").
+
 %% ===================================================================
 %% API functions
 %% ===================================================================
@@ -20,12 +22,23 @@ start_link() ->
 %% ===================================================================
 
 init([]) ->
-  Pools = model:get_db_config(pgsql,pools),
-  PoolSpecs = lists:map(fun({Name, SizeArgs, WorkerArgs}) ->
-    PoolArgs = [{name, {local, Name}},
-      {worker_module, estore_pgsql_worker}] ++ SizeArgs,
-      poolboy:child_spec(Name, PoolArgs, WorkerArgs)
-    end, Pools),
-  io:fwrite("~p~n",[PoolSpecs]),
-  {ok,{{one_for_one, 5,10},PoolSpecs}}.
+  Pools = start_pools(),
+  io:fwrite("~p~n",[Pools]),
+  {ok,{{one_for_one, 5,10},Pools}}.
 
+start_pools() ->
+  lists:foldl(fun({Name,_Config},Acc) -> 
+    Pools = estore_utils:get_db_config(Name,pools),
+    if is_list(Pools) =:= true ->
+      Acc ++ start_db_pools(Name,Pools);
+    true -> Acc ++ [] end
+  end,[],estore_utils:get_config(dbs)).
+
+start_db_pools(Db,Pools) ->
+  WorkerName = list_to_atom(atom_to_list(?APP) ++ "_" 
+    ++ atom_to_list(Db) ++ "_worker"),
+  lists:map(fun({Name, SizeArgs, WorkerArgs}) ->
+    PoolArgs = [{name, {local, Name}},
+      {worker_module, WorkerName}] ++ SizeArgs,
+      poolboy:child_spec(Name, PoolArgs, WorkerArgs)
+    end,Pools).
