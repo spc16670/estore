@@ -37,8 +37,10 @@ start_pools() ->
 start_db_pools(Db,Pools) ->
   WorkerName = list_to_atom(atom_to_list(?APP) ++ "_" 
     ++ atom_to_list(Db) ++ "_worker"),
-  lists:map(fun({Name, SizeArgs, WorkerArgs}) ->
+  lists:map(fun({Name,Args}) ->
+    SizeArgs = estore_utils:get_value(pool_size,Args,undefined),
+    WorkerArgs = estore_utils:get_value(worker_args,Args,undefined),
     PoolArgs = [{name, {local, Name}},
       {worker_module, WorkerName}] ++ SizeArgs,
-      poolboy:child_spec(Name, PoolArgs, WorkerArgs)
+      poolboy:child_spec(Name,PoolArgs,WorkerArgs)
     end,Pools).

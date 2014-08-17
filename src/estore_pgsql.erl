@@ -32,7 +32,8 @@
 ]).
 
 -export([
-  create_schema/1
+  get_pool/0
+  ,create_schema/1
   ,drop_tables/0
   ,create_tables/1
   ,one_to_many/2
@@ -49,7 +50,8 @@
 
 -compile({parse_transform,estore_dynarec}).
 
--define(SCHEMA,estore:get_db_config(pgsql,tablespace)).
+-define(SCHEMA,get_schema()).
+-define(POOL,get_pool()).
 
 %% -----------------------------------------------------------------------------
 %% -----------------------------------------------------------------------------
@@ -81,12 +83,21 @@ models() ->
 %% -----------------------------------------------------------------------------
 %% -----------------------------------------------------------------------------
 
-squery(PoolName, Sql) ->
+get_pool() ->
+  Pools = estore_utils:get_db_config(pgsql,pools),
+  {Name,_} = lists:nth(1,Pools),
+  Name.
+
+squery(Sql) ->
+  squery(?POOL,Sql).
+squery(PoolName,Sql) ->
   poolboy:transaction(PoolName, fun(Worker) ->
     gen_server:call(Worker, {squery, Sql})
   end).
 
-equery(PoolName, Stmt, Params) ->
+equery(Stmt,Params) ->
+  equery(?POOL,Stmt,Params).
+equery(PoolName,Stmt,Params) ->
   poolboy:transaction(PoolName, fun(Worker) ->
     gen_server:call(Worker, {equery, Stmt, Params})
   end). 
@@ -114,6 +125,11 @@ drop_schema(Schema,Opts) ->
   ++ value_to_string(Schema) ++ " "
   ++ options_to_string({options,cascade},Opts) ++ ";".
 
+get_schema() ->
+  case estore_utils:get_db_config(pgsql,tablespace) of
+    undefined -> estore;
+    Schema -> Schema
+  end.
 
 %% -----------------------------------------------------------------------------
 
