@@ -34,6 +34,9 @@
 -export([
   get_pool/0
   ,create_schema/1
+  ,sql_create_schema/1
+  ,drop_schema/1
+  ,sql_drop_schema/1
   ,drop_tables/0
   ,create_tables/1
   ,one_to_many/2
@@ -42,7 +45,6 @@
 
 -export([
   squery/2
-  ,equery/3
 ]).
 
 -include("estore.hrl").
@@ -50,6 +52,7 @@
 
 -compile({parse_transform,estore_dynarec}).
 
+-define(QUERY(Sql),squery(Sql)).
 -define(SCHEMA,get_schema()).
 -define(POOL,get_pool()).
 
@@ -70,7 +73,7 @@ find(_Name,_Conditions) ->
   ok.
 
 init() ->
-  drop_schema(),
+  drop_schema(?SCHEMA),
   create_schema(?SCHEMA),
   create_tables(models()).
 
@@ -95,13 +98,6 @@ squery(PoolName,Sql) ->
     gen_server:call(Worker, {squery, Sql})
   end).
 
-equery(Stmt,Params) ->
-  equery(?POOL,Stmt,Params).
-equery(PoolName,Stmt,Params) ->
-  poolboy:transaction(PoolName, fun(Worker) ->
-    gen_server:call(Worker, {equery, Stmt, Params})
-  end). 
-
 %% -----------------------------------------------------------------------------
 %% -----------------------------------------------------------------------------
 %% -----------------------------------------------------------------------------
@@ -117,10 +113,12 @@ new_model([],Record) ->
 
 %% -----------------------------------------------------------------------------
 
-drop_schema() ->
-  drop_schema(?SCHEMA,[{ifexists,false},{cascade,true}]).
+drop_schema(Schema) ->
+  ?QUERY(sql_drop_schema(Schema)).
 
-drop_schema(Schema,Opts) ->
+sql_drop_schema(Schema) ->
+  sql_drop_schema(Schema,[{ifexists,true},{cascade,true}]).
+sql_drop_schema(Schema,Opts) ->
   "DROP SCHEMA " ++ options_to_string({options,ifexists},Opts) ++ " "
   ++ value_to_string(Schema) ++ " "
   ++ options_to_string({options,cascade},Opts) ++ ";".
@@ -133,16 +131,16 @@ get_schema() ->
 
 %% -----------------------------------------------------------------------------
 
-create_schema(undefined) ->
-  ok;
-create_schema(S) ->
-  create_schema(S,[{ifexists,false}]).
-create_schema(S,Op) ->
+create_schema(Schema) ->
+  ?QUERY(sql_create_schema(Schema)).
+    
+sql_create_schema(Schema) ->
+  sql_create_schema(Schema,[{ifexists,false}]).
+sql_create_schema(Schema,Op) ->
   "CREATE SCHEMA " ++ options_to_string({options,ifexists},Op) 
-  ++ " " ++ value_to_string(S) ++ ";".
+  ++ " " ++ value_to_string(Schema) ++ ";".
 
 %% -----------------------------------------------------------------------------
-
 
 drop_tables() ->
   lists:foldl(fun(E,Acc) ->
