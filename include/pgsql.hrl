@@ -30,6 +30,23 @@
   ]
 }).
 
+-record(phone_type,{
+  type = [
+    {type,{varchar,[{length,50}]}}
+  ]  
+}).
+
+-record(phone, {
+  number = [
+    {type,{varchar,[{length,50}]}}
+  ]
+  ,type = [
+    {constraints,[
+      {one_to_one,phone_type}
+    ]}
+  ]  
+}).
+
 -record(shopper,{
   fname = [
     {type,{varchar,[{length,50}]}}

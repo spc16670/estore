@@ -142,18 +142,22 @@ gen_setter_clause(RecordName, FieldName) ->
 %% <p>It is a bit cryptic because of the Erlang token format, but you can try
 %% the following expression in the Erlang shell to see what it generates and
 %% and how to build the token list manually:</p>
+%% <p>Changed from using sets:to_list to lists:usort to keep the order.</p>
 %% <pre>
 %% erl_scan:tokens([], "records() -> [record_name_1, record_name_2, ...].\n", 0).
 %% </pre>
 gen_records(Tuples) ->
     ReversedPrefix = [{'->', 0}, {')', 0}, {'(', 0}, {atom, 0, records}],
     %% Keep only unique names.
-    Records = sets:to_list(sets:from_list([Name || {Name, _} <- Tuples])),
+    %Records = sets:to_list(sets:from_list([Name || {Name, _} <- Tuples])),
+    Records = remove_dups([Name || {Name, _} <- Tuples]),
     %% We're generating the expression backwards and then reverse it.
     {ok, Result} = erl_parse:parse_form(lists:reverse([{dot, 0} | gen_reversed_atom_list(Records, ReversedPrefix)])),
     Result.
 
-
+%% @private
+remove_dups([])    -> [];
+remove_dups([H|T]) -> [H | [X || X <- remove_dups(T), X /= H]].
 
 %% @doc Generates the <code>fields/1</code> function that returns the list of
 %%      field names corresponding to a record.

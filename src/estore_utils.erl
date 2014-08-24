@@ -6,6 +6,7 @@
   ,get_db_config/2
   ,get_config/1
   ,get_value/3
+  ,remove_dups/1
 ]).
 
 -include("estore.hrl").
@@ -29,4 +30,8 @@ get_value(Key,PropList,Default) ->
     _ -> Default
   end.
 
-
+%% @private
+remove_dups([]) -> 
+  [];
+remove_dups([H|T]) -> 
+  [H | [X || X <- remove_dups(T), X /= H]].

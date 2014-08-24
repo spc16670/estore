@@ -1,8 +1,7 @@
 -module(estore_pgsql).
 
 -export([
-  create_table/2
-  ,create_index/3
+  create_index/3
   ,create_index/4
   ,select/1
   ,select/2
@@ -33,18 +32,31 @@
 
 -export([
   get_pool/0
+
   ,create_schema/1
   ,sql_create_schema/1
+
+  ,schema_exists/1
+  ,sql_schema_exists/1
+
   ,drop_schema/1
   ,sql_drop_schema/1
-  ,drop_tables/0
+
   ,create_tables/1
+  ,sql_create_tables/1
+  ,create_table/1
+  ,sql_create_table/1
+  ,sql_create_table/2
+  ,sql_create_table/3
+
+  ,drop_tables/0
   ,one_to_many/2
 ]).
 
 
 -export([
-  squery/2
+  squery/1
+  ,squery/2
 ]).
 
 -include("estore.hrl").
@@ -112,16 +124,47 @@ new_model([],Record) ->
   Record.
 
 %% -----------------------------------------------------------------------------
+%% -------------------------------- SCHEMA -------------------------------------
+%% -----------------------------------------------------------------------------
 
 drop_schema(Schema) ->
-  ?QUERY(sql_drop_schema(Schema)).
+  case schema_exists(Schema) of
+    true -> ?QUERY(sql_drop_schema(Schema));
+    false -> ok
+  end.
 
 sql_drop_schema(Schema) ->
-  sql_drop_schema(Schema,[{ifexists,true},{cascade,true}]).
+  sql_drop_schema(Schema,[{cascade,true}]).
 sql_drop_schema(Schema,Opts) ->
   "DROP SCHEMA " ++ options_to_string({options,ifexists},Opts) ++ " "
   ++ value_to_string(Schema) ++ " "
   ++ options_to_string({options,cascade},Opts) ++ ";".
+
+%% -----------------------------------------------------------------------------
+
+create_schema(Schema) ->
+  case schema_exists(Schema) of
+    false -> ?QUERY(sql_create_schema(Schema)); 
+    true -> ok
+  end.
+    
+sql_create_schema(Schema) ->
+  sql_create_schema(Schema,[]).
+sql_create_schema(Schema,Op) ->
+  "CREATE SCHEMA " ++ options_to_string({options,ifexists},Op) 
+  ++ " " ++ value_to_string(Schema) ++ ";".
+
+%% -----------------------------------------------------------------------------
+
+schema_exists(Schema) ->
+  case ?QUERY(sql_schema_exists(Schema)) of
+    {ok,_ColInfo,[{SchemaBin}]} when is_binary(SchemaBin) -> true;
+    {ok,_ColInfo,[]} -> false
+  end.
+
+sql_schema_exists(Schema) ->
+  "SELECT schema_name FROM information_schema.schemata WHERE schema_name = '"
+   ++  value_to_string(Schema)  ++ "';".
 
 get_schema() ->
   case estore_utils:get_db_config(pgsql,tablespace) of
@@ -130,16 +173,7 @@ get_schema() ->
   end.
 
 %% -----------------------------------------------------------------------------
-
-create_schema(Schema) ->
-  ?QUERY(sql_create_schema(Schema)).
-    
-sql_create_schema(Schema) ->
-  sql_create_schema(Schema,[{ifexists,false}]).
-sql_create_schema(Schema,Op) ->
-  "CREATE SCHEMA " ++ options_to_string({options,ifexists},Op) 
-  ++ " " ++ value_to_string(Schema) ++ ";".
-
+%% -------------------------------- TABLES -------------------------------------
 %% -----------------------------------------------------------------------------
 
 drop_tables() ->
@@ -159,40 +193,92 @@ drop_table(S,T,Op) ->
 %% -----------------------------------------------------------------------------
 
 create_tables(Records) ->
-  lists:foldl(fun(E,Acc) ->
-    Acc ++ [create_table(E)] 
-  end,[],Records). 
+  Sql = sql_create_tables(Records),
+  lists:foldl(fun(E,Acc) -> 
+    Acc ++ [?QUERY(E)]
+  end,[],Sql).
+
+sql_create_tables(Records) ->
+  Tables = lists:foldl(fun(E,Acc) ->
+    Acc ++ sql_create_relation_tables(E) ++ [sql_create_table(E)] 
+  end,[],Records),
+  Tables,
+  estore_utils:remove_dups(Tables). 
+
+sql_create_relation_tables(Record) ->
+  Name = hd(tuple_to_list(Record)),
+  Relations = lists:foldl(fun(E,Acc) -> 
+    FldTuple = {{Name,E},get_value(E,Record)},
+    Acc ++ [sql_create_relation_table(FldTuple)]
+  end,[],fields(Name)),
+  lists:flatten(Relations).
+
+sql_create_relation_table({{Table,_Field},FldOpts}) ->
+  case estore_utils:get_value(constraints,FldOpts,[]) of
+    {one_to_many,Ref} -> one_to_many(Table,Ref);
+    {many_to_many,_Ref} -> [];
+    _ -> []
+  end.
 
 create_table(Record) ->
-  create_table(Record,[{ifexists,false}]).
+  ?QUERY(sql_create_table(Record)).
 
-create_table(Record,Options) ->
+sql_create_table(Record) ->
+  sql_create_table(Record,[{ifexists,false}]).
+
+sql_create_table(Record,Options) ->
   Name = hd(tuple_to_list(Record)),
-  Fields = string:strip(string:strip(convert_fields(Name),both,$ ),both,$,),
-  create_table(Name,Fields,Options).
-create_table(Name,Fields,Options) ->
+  Fields = string:strip(string:strip(convert_fields(Record),both,$ ),both,$,),
+  sql_create_table(Name,Fields,Options).
+sql_create_table(Name,Fields,Options) ->
   "CREATE TABLE " ++ options_to_string({options,ifexists},Options) ++ " " 
   ++ has_value(schema,?SCHEMA) ++ value_to_string(Name) 
   ++ " (" ++ Fields ++ "\n);".
 
-  %% Stmt ++  "\n" ++ add_constraint(Schema,Name,Constraints),
-  %% transaction(Stmt).
+%% -----------------------------------------------------------------------------
+
+one_to_many(Table,Ref) ->
+  LookupTableName = value_to_string(Table) ++ "_" ++ value_to_string(Ref),
+  FieldTuples = [
+    {{LookupTableName,Table},[
+      {type,bigserial}
+      ,{constraints,[{one_to_one,Table}]}
+    ]}
+    ,{{LookupTableName,Ref},[
+      {type,bigserial}
+      ,{constraints,[{one_to_one,Ref}]}
+    ]}
+  ],
+  FieldsStr = lists:foldl(fun(E,Acc) -> 
+    Acc ++ convert_field(E)
+  end,[],FieldTuples),  
+  Fields = string:strip(string:strip(FieldsStr,both,$ ),both,$,),
+  sql_create_table(LookupTableName,Fields,[{ifexists,false}]).
 
 %% -----------------------------------------------------------------------------
 
-convert_fields(Name) ->
+convert_fields(Record) ->
+  Name = hd(tuple_to_list(Record)),
   lists:foldl(fun(E,Acc) -> 
-    FldTuple = {{Name,E},get_value(E,new_record(Name))},
+    FldTuple = {{Name,E},get_value(E,Record)},
     Acc ++ convert_field(FldTuple)
-  end,[],fields(Name)).
+  end,"id bigserial PRIMARY KEY,",fields(Name)).
   
 convert_field({{Table,Field},FldOpts}) ->
   value_to_string(Field) ++ " " ++ 
   string:strip(options_to_string({field,{Table,Field}},FldOpts),both,$ ) ++ ", ".
 
+%% -----------------------------------------------------------------------------
+
 options_to_string({field,{T,F}},FldOpts) ->
-  options_to_string(type,proplists:get_value(type,FldOpts)) ++ " " ++
-  options_to_string({constraints,{T,F}},proplists:get_value(constraints,FldOpts));
+  Type = case estore_utils:get_value(constraints,FldOpts,undefined) of
+    undefined ->
+      options_to_string(type,estore_utils:get_value(type,FldOpts,undefined));
+    _Relation -> 
+      options_to_string(type,bigserial)
+  end,
+  Type ++ " " ++ options_to_string({constraints,{T,F}},
+    estore_utils:get_value(constraints,FldOpts,undefined));
 
 options_to_string({options,cascade},true) ->
   "CASCADE";
@@ -204,11 +290,12 @@ options_to_string({options,Key},Options) when is_list(Options) ->
   options_to_string({options,Key},proplists:get_value(Key,Options));
 options_to_string({options,_},undefined) ->
   [];
-options_to_string({options,_},_MissingClouse) ->
-  [];
+%options_to_string({options,_},_MissingClouse) ->
+%  [];
 
 options_to_string({constraints,{T,_F}},{one_to_many,Table}) ->
-  one_to_many(T,Table);
+  "REFERENCES " ++ value_to_string(T) ++ "_" ++ value_to_string(Table) 
+  ++ " (id) ";
 options_to_string({constraints,{_T,_F}},{one_to_one,Table}) ->
   "REFERENCES " ++ value_to_string(Table) ++ " (id) ";
 options_to_string({constraints,{_T,_F}},{null,false}) ->
@@ -235,27 +322,6 @@ options_to_string(type,{Type,FldOpts}) ->
   end,[],FldOpts);
 
 options_to_string(_Key,undefined) ->
-  [].
-
-%% -----------------------------------------------------------------------------
-
-one_to_many(Table,Ref) ->
-  LookupTableName = value_to_string(Table) ++ "_" ++ value_to_string(Ref),
-  FieldTuples = [
-    {{LookupTableName,Table},[
-      {type,bigserial}
-      ,{constraints,[{one_to_one,Table}]}
-    ]}
-    ,{{LookupTableName,Ref},[
-      {type,bigserial}
-      ,{constraints,[{one_to_one,Ref}]}
-    ]}
-  ],
-  FieldsStr = lists:foldl(fun(E,Acc) -> 
-    Acc ++ convert_field(E)
-  end,[],FieldTuples),  
-  Fields = string:strip(string:strip(FieldsStr,both,$ ),both,$,),
-  create_table(LookupTableName,Fields,[{ifexists,false}]),
   [].
 
 %% -----------------------------------------------------------------------------
