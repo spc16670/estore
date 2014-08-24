@@ -202,23 +202,34 @@ sql_create_tables(Records) ->
   Tables = lists:foldl(fun(E,Acc) ->
     Acc ++ sql_create_relation_tables(E) ++ [sql_create_table(E)] 
   end,[],Records),
-  Tables,
-  estore_utils:remove_dups(Tables). 
+  Tables.
+%  estore_utils:remove_dups(Tables). 
 
 sql_create_relation_tables(Record) ->
   Name = hd(tuple_to_list(Record)),
-  Relations = lists:foldl(fun(E,Acc) -> 
-    FldTuple = {{Name,E},get_value(E,Record)},
-    Acc ++ [sql_create_relation_table(FldTuple)]
-  end,[],fields(Name)),
-  lists:flatten(Relations).
+  lists:foldl(fun(E,Acc) -> 
+    FldTuple = {{Name,E},get_value(E,Record)},  
+    case sql_create_relation_table(FldTuple) of
+      [] -> Acc ++ [];
+      Sql -> Acc ++ [Sql]
+    end
+  end,[],fields(Name)).
 
 sql_create_relation_table({{Table,_Field},FldOpts}) ->
-  case estore_utils:get_value(constraints,FldOpts,[]) of
-    {one_to_many,Ref} -> one_to_many(Table,Ref);
-    {many_to_many,_Ref} -> [];
-    _ -> []
-  end.
+  Constraints = estore_utils:get_value(constraints,FldOpts,[]),
+  MaybeOneToMany = estore_utils:get_value(one_to_many,Constraints,undefined),
+  maybe_one_to_many({Table,Constraints},MaybeOneToMany).
+
+maybe_one_to_many({Table,Constraints},undefined) ->
+  MaybeManyToMany = estore_utils:get_value(many_to_many,Constraints,undefined),
+  maybe_many_to_many({Table,Constraints},MaybeManyToMany);
+maybe_one_to_many({Table,_Constraints},Ref) ->
+  one_to_many(Table,Ref).
+
+maybe_many_to_many({_Table,_Constraints},undefined) ->
+  [];
+maybe_many_to_many({Table,_Constraints},Ref) ->
+  many_to_many(Table,Ref).
 
 create_table(Record) ->
   ?QUERY(sql_create_table(Record)).
@@ -236,6 +247,9 @@ sql_create_table(Name,Fields,Options) ->
   ++ " (" ++ Fields ++ "\n);".
 
 %% -----------------------------------------------------------------------------
+
+many_to_many(_Table,_Ref) ->
+  [].
 
 one_to_many(Table,Ref) ->
   LookupTableName = value_to_string(Table) ++ "_" ++ value_to_string(Ref),
