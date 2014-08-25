@@ -20,7 +20,6 @@
   ,where_to_string/1
 ]).
 
-
 -export([
   init/0
   ,new/1
@@ -31,9 +30,13 @@
 ]).
 
 -export([
-  get_pool/0
+  squery/1
+  ,squery/2
+]).
 
-  ,create_schema/1
+
+-export([
+  create_schema/1
   ,sql_create_schema/1
 
   ,schema_exists/1
@@ -50,13 +53,13 @@
   ,sql_create_table/3
 
   ,drop_tables/0
-  ,one_to_many/2
+  ,sql_one_to_many/2
+
+  ,insert/1
 ]).
 
-
 -export([
-  squery/1
-  ,squery/2
+  get_pool/0
 ]).
 
 -include("estore.hrl").
@@ -69,7 +72,7 @@
 -define(POOL,get_pool()).
 
 %% -----------------------------------------------------------------------------
-%% -----------------------------------------------------------------------------
+%% --------------------------------- API ---------------------------------------
 %% -----------------------------------------------------------------------------
 
 new(Name) ->
@@ -98,11 +101,6 @@ models() ->
 %% -----------------------------------------------------------------------------
 %% -----------------------------------------------------------------------------
 
-get_pool() ->
-  Pools = estore_utils:get_db_config(pgsql,pools),
-  {Name,_} = lists:nth(1,Pools),
-  Name.
-
 squery(Sql) ->
   squery(?POOL,Sql).
 squery(PoolName,Sql) ->
@@ -118,7 +116,12 @@ new_model(Name) ->
   new_model(fields(Name),new_record(Name)).
 
 new_model([F|Fs],Record) ->
-  R = set_value(F,undefined,Record),
+  R = case has_relation(Record,F) of
+    {one_to_one,Ref} -> set_value(F,new_model(Ref),Record);
+    {one_to_many,Ref} -> set_value(F,[new_model(Ref)],Record);
+    {many_to_many,Ref} -> set_value(F,[new_model(Ref)],Record);
+    undefined -> set_value(F,undefined,Record)
+  end,
   new_model(Fs,R);
 new_model([],Record) ->
   Record.
@@ -166,12 +169,6 @@ sql_schema_exists(Schema) ->
   "SELECT schema_name FROM information_schema.schemata WHERE schema_name = '"
    ++  value_to_string(Schema)  ++ "';".
 
-get_schema() ->
-  case estore_utils:get_db_config(pgsql,tablespace) of
-    undefined -> estore;
-    Schema -> Schema
-  end.
-
 %% -----------------------------------------------------------------------------
 %% -------------------------------- TABLES -------------------------------------
 %% -----------------------------------------------------------------------------
@@ -200,36 +197,26 @@ create_tables(Records) ->
 
 sql_create_tables(Records) ->
   Tables = lists:foldl(fun(E,Acc) ->
-    Acc ++ sql_create_relation_tables(E) ++ [sql_create_table(E)] 
+    Acc ++ [sql_create_table(E)] ++ sql_create_relation_tables(E)
   end,[],Records),
   Tables.
-%  estore_utils:remove_dups(Tables). 
 
 sql_create_relation_tables(Record) ->
   Name = hd(tuple_to_list(Record)),
   lists:foldl(fun(E,Acc) -> 
-    FldTuple = {{Name,E},get_value(E,Record)},  
-    case sql_create_relation_table(FldTuple) of
+    case sql_create_relation_table(Record,E) of
       [] -> Acc ++ [];
       Sql -> Acc ++ [Sql]
     end
   end,[],fields(Name)).
 
-sql_create_relation_table({{Table,_Field},FldOpts}) ->
-  Constraints = estore_utils:get_value(constraints,FldOpts,[]),
-  MaybeOneToMany = estore_utils:get_value(one_to_many,Constraints,undefined),
-  maybe_one_to_many({Table,Constraints},MaybeOneToMany).
-
-maybe_one_to_many({Table,Constraints},undefined) ->
-  MaybeManyToMany = estore_utils:get_value(many_to_many,Constraints,undefined),
-  maybe_many_to_many({Table,Constraints},MaybeManyToMany);
-maybe_one_to_many({Table,_Constraints},Ref) ->
-  one_to_many(Table,Ref).
-
-maybe_many_to_many({_Table,_Constraints},undefined) ->
-  [];
-maybe_many_to_many({Table,_Constraints},Ref) ->
-  many_to_many(Table,Ref).
+sql_create_relation_table(Record,Field) ->
+  Table = hd(tuple_to_list(Record)),
+  case has_relation(Record,Field) of
+    {one_to_many,Ref} -> sql_one_to_many(Table,Ref);
+    {many_to_many,Ref} -> sql_many_to_many(Table,Ref);
+    _ -> []
+  end.
 
 create_table(Record) ->
   ?QUERY(sql_create_table(Record)).
@@ -247,11 +234,13 @@ sql_create_table(Name,Fields,Options) ->
   ++ " (" ++ Fields ++ "\n);".
 
 %% -----------------------------------------------------------------------------
+%% -------------------------- RELATIONS ----------------------------------------
+%% -----------------------------------------------------------------------------
 
-many_to_many(_Table,_Ref) ->
+sql_many_to_many(_Table,_Ref) ->
   [].
 
-one_to_many(Table,Ref) ->
+sql_one_to_many(Table,Ref) ->
   LookupTableName = value_to_string(Table) ++ "_" ++ value_to_string(Ref),
   FieldTuples = [
     {{LookupTableName,Table},[
@@ -269,6 +258,46 @@ one_to_many(Table,Ref) ->
   Fields = string:strip(string:strip(FieldsStr,both,$ ),both,$,),
   sql_create_table(LookupTableName,Fields,[{ifexists,false}]).
 
+
+%% -----------------------------------------------------------------------------
+%% ---------------------------- INSERTS ----------------------------------------
+%% -----------------------------------------------------------------------------
+
+
+insert(Model) ->
+  %% get all records composing the model
+  %% put the records in an order to run them observing constraint declarations
+  %% check ofor the existence of id field for every record, if it is there create statement for update otherwise insert
+  %% add any needed updates/inserts to the relation lookup tables and amend the order
+
+  sql_insert_values(Model).
+
+
+
+
+
+sql_insert_values(Record) ->
+  Name = hd(tuple_to_list(Record)),
+  {Insert,Value} = sql_insert_values(Record,new_record(Name),fields(Name),[],[]),
+  "INSERT INTO " ++ has_value(schema,?SCHEMA) ++ value_to_string(Name) ++ " (" ++
+  Insert ++ ") VALUES ( " ++ Value ++ ");". 
+
+sql_insert_values(Record,RecordDef,[F|Fs],Insert,Value) ->
+  Inserts = Insert ++ value_to_string(F) ++ ", ",  
+  TypeDefinition = estore_utils:get_value(type,get_value(F,RecordDef),undefined),
+  Values = Value ++ format_to_sql(TypeDefinition,get_value(F,Record)) ++ ", ",
+  sql_insert_values(Record,RecordDef,Fs,Inserts,Values);
+sql_insert_values(_Record,_RecordDef,[],Inserts,Values) ->
+  {Inserts,Values}.
+
+format_to_sql(_Type,Value) ->
+  value_to_string(Value).
+
+
+
+
+%% -----------------------------------------------------------------------------
+%% --------------------------- CONVERTERS --------------------------------------
 %% -----------------------------------------------------------------------------
 
 convert_fields(Record) ->
@@ -304,14 +333,11 @@ options_to_string({options,Key},Options) when is_list(Options) ->
   options_to_string({options,Key},proplists:get_value(Key,Options));
 options_to_string({options,_},undefined) ->
   [];
-%options_to_string({options,_},_MissingClouse) ->
-%  [];
 
-options_to_string({constraints,{T,_F}},{one_to_many,Table}) ->
-  "REFERENCES " ++ value_to_string(T) ++ "_" ++ value_to_string(Table) 
-  ++ " (id) ";
-options_to_string({constraints,{_T,_F}},{one_to_one,Table}) ->
-  "REFERENCES " ++ value_to_string(Table) ++ " (id) ";
+options_to_string({constraints,{_T,_F}},{one_to_many,_Ref}) ->
+  "";
+options_to_string({constraints,{_T,_F}},{one_to_one,Ref}) ->
+  "REFERENCES " ++ value_to_string(Ref) ++ " (id) ";
 options_to_string({constraints,{_T,_F}},{null,false}) ->
   value_to_string('not') ++ " " ++ value_to_string(null)++ " ";
 options_to_string({constraints,{_T,_F}},{null,true}) ->
@@ -337,6 +363,53 @@ options_to_string(type,{Type,FldOpts}) ->
 
 options_to_string(_Key,undefined) ->
   [].
+
+
+
+%% -----------------------------------------------------------------------------
+%% ----------------------------- UTILITIES -------------------------------------
+%% -----------------------------------------------------------------------------
+
+get_schema() ->
+  case estore_utils:get_db_config(pgsql,tablespace) of
+    undefined -> estore;
+    Schema -> Schema
+  end.
+
+get_pool() ->
+  Pools = estore_utils:get_db_config(pgsql,pools),
+  {Name,_} = lists:nth(1,Pools),
+  Name.
+
+
+has_relation(Record,FieldName) ->
+  Constraints = estore_utils:get_value(constraints,get_value(FieldName,Record),[]),
+  MaybeOneToMany = estore_utils:get_value(one_to_many,Constraints,undefined),
+  maybe_one_to_many(Constraints,MaybeOneToMany). 
+maybe_one_to_many(Constraints,undefined) ->
+  MaybeManyToMany = estore_utils:get_value(many_to_many,Constraints,undefined),
+  maybe_many_to_many(Constraints,MaybeManyToMany);
+maybe_one_to_many(_Constraints,Ref) ->
+  {one_to_many,Ref}.
+maybe_many_to_many(Constraints,undefined) ->
+  MaybeOneToOne = estore_utils:get_value(one_to_one,Constraints,undefined),
+  maybe_one_to_one(Constraints,MaybeOneToOne);
+maybe_many_to_many(_Constraints,Ref) ->
+  {many_to_many,Ref}.
+maybe_one_to_one(_Constraints,undefined) ->
+  undefined;
+maybe_one_to_one(_Constraints,Ref) ->
+  {one_to_one,Ref}.
+
+
+
+
+
+
+
+
+
+
 
 %% -----------------------------------------------------------------------------
 

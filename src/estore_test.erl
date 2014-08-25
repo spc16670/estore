@@ -1,8 +1,9 @@
 -module(estore_test).
 
 -export([
-  test/0
-  ,run/0
+  new/0
+  ,new/2
+  ,test/0
   ,print/2
 ]).
 
@@ -21,9 +22,11 @@
 
 %% -----------------------------------------------------------------------------
 
-run() ->
-  
-  model:save().
+new() ->
+  new(estore_pgsql,user).
+new(Module,Model) ->
+  Record = estore:new(Module,Model),
+  io:fwrite("~p~n",[Record]).
 
 test() ->
   print('create_schema/1',pgsql:create_schema(?SCHEMA)),

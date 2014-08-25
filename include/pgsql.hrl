@@ -76,7 +76,7 @@
   ]
 }).
 
--record(users,{
+-record(user,{
   email = [
     {type,{varchar,[{length,50}]}}
     ,{constraints,[{null,false}]}
