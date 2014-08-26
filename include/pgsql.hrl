@@ -25,7 +25,8 @@
   ]
   ,type = [
     {constraints,[
-      {one_to_one,address_type}
+      {references,address_type}
+      ,{null,false}
     ]}
   ]
 }).
@@ -42,7 +43,8 @@
   ]
   ,type = [
     {constraints,[
-      {one_to_one,phone_type}
+      {references,phone_type}
+      ,{null,false}
     ]}
   ]  
 }).
@@ -58,12 +60,13 @@
     {type,{varchar,[{length,50}]}}
   ]
   ,dob = [
-    {type,date}
+    {type,{date,[{format,[]}]}}
   ]
   ,phone = [
     {constraints,[
     %% one_to_many creates a lookup table
       {one_to_many,phone}
+      ,{null,false}
       %%,{on_delete,cascade}
     ]}
   ]
@@ -71,6 +74,7 @@
     {constraints,[
       %% one_to_many creates a lookup table
       {one_to_many,address}
+      ,{null,false}
       %%,{on_delete,cascade}
     ]}
   ]
@@ -88,7 +92,8 @@
   ,shopper = [
     {constraints,[
       %% one_to_one references the id of the other model
-      {one_to_one,shopper}
+      {references,shopper}
+      ,{null,false} 
       %%,{on_delete,cascade}
       %%,{on_update,cascade}
     ]}

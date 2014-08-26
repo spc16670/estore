@@ -53,7 +53,7 @@
   ,sql_create_table/3
 
   ,drop_tables/0
-  ,sql_one_to_many/2
+  ,sql_one_to_many/3
 
   ,insert/1
 ]).
@@ -117,7 +117,7 @@ new_model(Name) ->
 
 new_model([F|Fs],Record) ->
   R = case has_relation(Record,F) of
-    {one_to_one,Ref} -> set_value(F,new_model(Ref),Record);
+    {references,Ref} -> set_value(F,new_model(Ref),Record);
     {one_to_many,Ref} -> set_value(F,[new_model(Ref)],Record);
     {many_to_many,Ref} -> set_value(F,[new_model(Ref)],Record);
     undefined -> set_value(F,undefined,Record)
@@ -212,9 +212,10 @@ sql_create_relation_tables(Record) ->
 
 sql_create_relation_table(Record,Field) ->
   Table = hd(tuple_to_list(Record)),
+  Constraints = estore_utils:get_value(constraints,get_value(Field,Record),[]),
   case has_relation(Record,Field) of
-    {one_to_many,Ref} -> sql_one_to_many(Table,Ref);
-    {many_to_many,Ref} -> sql_many_to_many(Table,Ref);
+    {one_to_many,Ref} -> sql_one_to_many(Table,Ref,Constraints);
+    {many_to_many,Ref} -> sql_many_to_many(Table,Ref,Constraints);
     _ -> []
   end.
 
@@ -237,19 +238,19 @@ sql_create_table(Name,Fields,Options) ->
 %% -------------------------- RELATIONS ----------------------------------------
 %% -----------------------------------------------------------------------------
 
-sql_many_to_many(_Table,_Ref) ->
+sql_many_to_many(_Table,_Ref,_Constraints) ->
   [].
 
-sql_one_to_many(Table,Ref) ->
+sql_one_to_many(Table,Ref,Constraints) ->
   LookupTableName = value_to_string(Table) ++ "_" ++ value_to_string(Ref),
   FieldTuples = [
     {{LookupTableName,Table},[
-      {type,bigserial}
-      ,{constraints,[{one_to_one,Table}]}
+      {type,{bigserial,[]}}
+      ,{constraints,[{references,Table},{null,false}]}
     ]}
     ,{{LookupTableName,Ref},[
-      {type,bigserial}
-      ,{constraints,[{one_to_one,Ref}]}
+      {type,{bigserial,[]}}
+      ,{constraints,[{references,Ref}] ++ [has_null(Constraints)]}
     ]}
   ],
   FieldsStr = lists:foldl(fun(E,Acc) -> 
@@ -271,8 +272,6 @@ insert(Model) ->
   %% add any needed updates/inserts to the relation lookup tables and amend the order
 
   sql_insert_values(Model).
-
-
 
 
 
@@ -318,7 +317,7 @@ options_to_string({field,{T,F}},FldOpts) ->
     undefined ->
       options_to_string(type,estore_utils:get_value(type,FldOpts,undefined));
     _Relation -> 
-      options_to_string(type,bigserial)
+      options_to_string(type,{bigserial,[]})
   end,
   Type ++ " " ++ options_to_string({constraints,{T,F}},
     estore_utils:get_value(constraints,FldOpts,undefined));
@@ -336,7 +335,7 @@ options_to_string({options,_},undefined) ->
 
 options_to_string({constraints,{_T,_F}},{one_to_many,_Ref}) ->
   "";
-options_to_string({constraints,{_T,_F}},{one_to_one,Ref}) ->
+options_to_string({constraints,{_T,_F}},{references,Ref}) ->
   "REFERENCES " ++ value_to_string(Ref) ++ " (id) ";
 options_to_string({constraints,{_T,_F}},{null,false}) ->
   value_to_string('not') ++ " " ++ value_to_string(null)++ " ";
@@ -349,14 +348,15 @@ options_to_string({constraints,{T,F}},ConstraintsList) ->
     Acc ++ options_to_string({constraints,{T,F}},E)
   end,[],ConstraintsList);
 
-options_to_string(varchar,{length,Size}) ->
-   "(" ++  value_to_string(Size) ++ ")";
 
-options_to_string(type,date) ->
-  " " ++ value_to_string(date) ++ " ";
-options_to_string(type,bigserial) ->
-  " " ++ value_to_string(bigserial) ++ " ";
-options_to_string(type,{Type,FldOpts}) ->
+options_to_string('varchar',{length,Size}) ->
+   "(" ++  value_to_string(Size) ++ ")";
+options_to_string('date',_Opts) -> 
+  "";
+options_to_string('bigserial',_Opts) ->
+  "";
+
+options_to_string('type',{Type,FldOpts}) ->
   value_to_string(Type) ++ " " ++ lists:foldl(fun(E,Acc) -> 
     Acc ++ options_to_string(Type,E)
   end,[],FldOpts);
@@ -392,24 +392,25 @@ maybe_one_to_many(Constraints,undefined) ->
 maybe_one_to_many(_Constraints,Ref) ->
   {one_to_many,Ref}.
 maybe_many_to_many(Constraints,undefined) ->
-  MaybeOneToOne = estore_utils:get_value(one_to_one,Constraints,undefined),
-  maybe_one_to_one(Constraints,MaybeOneToOne);
+  MaybeOneToOne = estore_utils:get_value(references,Constraints,undefined),
+  maybe_references(Constraints,MaybeOneToOne);
 maybe_many_to_many(_Constraints,Ref) ->
   {many_to_many,Ref}.
-maybe_one_to_one(_Constraints,undefined) ->
+maybe_references(_Constraints,undefined) ->
   undefined;
-maybe_one_to_one(_Constraints,Ref) ->
-  {one_to_one,Ref}.
+maybe_references(_Constraints,Ref) ->
+  {references,Ref}.
 
 
+has_null(Constraints) ->
+  case estore_utils:get_value(null,Constraints,false) of
+    true -> {null,true};
+    false -> {null,false}
+  end.
 
-
-
-
-
-
-
-
+%has_null(Record,FieldName) -> 
+%  Constraints = estore_utils:get_value(constraints,get_value(FieldName,Record),[]),
+%  has_null(Constraints).
 
 %% -----------------------------------------------------------------------------
 
