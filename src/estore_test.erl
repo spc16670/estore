@@ -2,6 +2,7 @@
 
 -export([
   new/0
+  ,new/1
   ,new/2
   ,test/0
   ,print/2
@@ -20,13 +21,38 @@
 -define(GROUPBY,?FIELDS).
 -define(JOIN,[{{'LEFT OUTER JOIN',{?SCHEMA,?TABLE2,'T2'}},'ON',{{'T',?TABLE},'=',{'T2',?TABLE2}}}]).
 
+-include("pgsql.hrl").
+
 %% -----------------------------------------------------------------------------
 
 new() ->
-  new(estore_pgsql,user).
-new(Module,Model) ->
+  new(shopper).
+new(Model) ->
+  new(estore_pgsql,Model).
+new(Module,Model) when Model =:= 'shopper' ->
   Record = estore:new(Module,Model),
-  io:fwrite("~p~n",[Record]).
+  PhoneType = Record#'shopper'.'phone'#'phone'.'type'#'phone_type'{'type' = "Mobile"},
+  Phone = Record#'shopper'.'phone'#'phone'{'number' = "07871259234", 'type' = PhoneType},
+  AddressType = Record#'shopper'.'address'#'address'.'type'#'address_type'{'type' = "Residential"},
+  Address = Record#'shopper'.'address'#'address'{
+    'line1' = "Flat 1/2"
+    ,'line2' = "56 Cecil St"
+    ,'line3' = null
+    ,'postcode' = "G128RJ"
+    ,'city' = "Glasgow"
+    ,'country' = "Scotland"
+    ,'type' = AddressType
+  },
+  Record#'shopper'{
+    'fname' = "Szymon"
+    ,'mname' = "Piotr"
+    ,'lname' = "Czaja"
+    ,'dob' = "1987-03-01"
+    ,'phone' = Phone
+    ,'address' = Address
+  };
+new(Module,Model) when Model =:= 'user' ->
+  estore:new(Module,Model).
 
 test() ->
   print('create_schema/1',pgsql:create_schema(?SCHEMA)),

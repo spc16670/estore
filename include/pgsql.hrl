@@ -90,10 +90,11 @@
     ,{constraints,[{null,false}]}
   ]
   ,shopper = [
-    {constraints,[
-      %% one_to_one references the id of the other model
+    {type,{'bigint',[]}}
+    ,{constraints,[
+      %% references references the id of the other model
       {references,shopper}
-      ,{null,false} 
+      ,{null,true} 
       %%,{on_delete,cascade}
       %%,{on_update,cascade}
     ]}
