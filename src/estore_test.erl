@@ -30,11 +30,14 @@ new() ->
 new(Model) ->
   new(estore_pgsql,Model).
 new(Module,Model) when Model =:= 'shopper' ->
-  Record = estore:new(Module,Model),
-  PhoneType = Record#'shopper'.'phone'#'phone'.'type'#'phone_type'{'type' = "Mobile"},
-  Phone = Record#'shopper'.'phone'#'phone'{'number' = "07871259234", 'type' = PhoneType},
-  AddressType = Record#'shopper'.'address'#'address'.'type'#'address_type'{'type' = "Residential"},
-  Address = Record#'shopper'.'address'#'address'{
+  PhoneTypeRecord = estore:new(Module,'phone_type'),
+  PhoneType = PhoneTypeRecord#'phone_type'{'type' = "Mobile"},
+  PhoneRecord = estore:new(Module,'phone'),
+  Phone = PhoneRecord#'phone'{'number' = "07871259234", 'type' = PhoneType},
+  AddressTypeRecord = estore:new(Module,'address_type'),
+  AddressType = AddressTypeRecord#'address_type'{'type' = "Residential"},
+  AddressRecord = estore:new(Module,'address'),
+  Address = AddressRecord#'address'{
     'line1' = "Flat 1/2"
     ,'line2' = "56 Cecil St"
     ,'line3' = null
@@ -43,6 +46,7 @@ new(Module,Model) when Model =:= 'shopper' ->
     ,'country' = "Scotland"
     ,'type' = AddressType
   },
+  Record = estore:new(Module,Model),
   Record#'shopper'{
     'fname' = "Szymon"
     ,'mname' = "Piotr"

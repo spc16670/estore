@@ -188,22 +188,6 @@ sql_schema_exists(Schema) ->
 %% -------------------------------- TABLES -------------------------------------
 %% -----------------------------------------------------------------------------
 
-drop_tables() ->
-  lists:foldl(fun(E,Acc) ->
-    Acc ++ [drop_table(E)] 
-  end,[],records()). 
-
-drop_table(T) ->
-  drop_table(?SCHEMA,T).
-drop_table(S,T) ->
-  drop_table(S,T,[{ifexists,true},{cascade,true}]).
-drop_table(S,T,Op) ->
-  "DROP TABLE " ++ options_to_string({options,ifexists},Op) ++ " " 
-  ++ has_value(schema,S) ++ value_to_string(T) ++ " " 
-  ++ options_to_string({options,cascade},Op) ++ ";".
-
-%% -----------------------------------------------------------------------------
-
 create_tables(Records) ->
   Sql = sql_create_tables(Records),
   lists:foldl(fun(E,Acc) -> 
@@ -247,7 +231,44 @@ sql_create_table(Record,Options) ->
 sql_create_table(Name,Fields,Options) ->
   "CREATE TABLE " ++ options_to_string({options,ifexists},Options) ++ " " 
   ++ has_value(schema,?SCHEMA) ++ value_to_string(Name) 
-  ++ " (" ++ Fields ++ "\n);".
+  ++ " (" ++ Fields ++ "\n); ".
+
+convert_fields(Record) ->
+  Name = hd(tuple_to_list(Record)),
+  lists:foldl(fun(E,Acc) ->
+    FldOpts = get_value(E,Record),
+    FldOpts2 = if E =:= id -> 
+      FldOpts ++ [{constraints,[{pk,[]},{null,false}]}]; 
+      true -> FldOpts end,
+    FldTuple = {{Name,E},FldOpts2},
+    FldStmt = case has_relation(Record,E) of
+      undefined -> convert_field(FldTuple);
+      {references,_Ref} -> convert_field(FldTuple); 
+      _ -> []
+    end,
+    Acc ++ FldStmt
+  end,[],fields(Name)).
+  
+convert_field({{Table,Field},FldOpts}) ->
+  value_to_string(Field) ++ " " ++
+  strip_comma(options_to_string({field,{Table,Field}},FldOpts)) ++ ", ".
+
+%% -----------------------------------------------------------------------------
+
+drop_tables() ->
+  lists:foldl(fun(E,Acc) ->
+    Acc ++ [drop_table(E)] 
+  end,[],records()). 
+
+drop_table(T) ->
+  drop_table(?SCHEMA,T).
+drop_table(S,T) ->
+  drop_table(S,T,[{ifexists,true},{cascade,true}]).
+drop_table(S,T,Op) ->
+  "DROP TABLE " ++ options_to_string({options,ifexists},Op) ++ " " 
+  ++ has_value(schema,S) ++ value_to_string(T) ++ " " 
+  ++ options_to_string({options,cascade},Op) ++ ";".
+
 
 %% -----------------------------------------------------------------------------
 %% -------------------------- RELATIONS ----------------------------------------
@@ -256,8 +277,8 @@ sql_create_table(Name,Fields,Options) ->
 sql_many_to_many(_Table,_Ref,_Constraints) ->
   [].
 
-sql_one_to_many(Table,Ref,Constraints) ->
-  LookupTableName = value_to_string(Table) ++ "_" ++ value_to_string(Ref),
+sql_one_to_many(Table,Ref,_Constraints) ->
+  LookupTableName = relation_table_name(Table,Ref) ,
   FieldTuples = [
     {{LookupTableName,Table},[
       {type,{'bigint',[]}}
@@ -265,7 +286,7 @@ sql_one_to_many(Table,Ref,Constraints) ->
     ]}
     ,{{LookupTableName,Ref},[
       {type,{'bigint',[]}}
-      ,{constraints,[{references,Ref}] ++ [has_null(Constraints)]}
+      ,{constraints,[{references,Ref},{null,false}]}
     ]}
   ],
   FieldsStr = lists:foldl(fun(E,Acc) -> 
@@ -288,12 +309,56 @@ save_model(Model) ->
 
 %  has_relation(Record,FieldName)  
   OrderedRecords = model_records(Model),
-  sql_insert_list(OrderedRecords).
+%  io:fwrite("~n ~p ~n",[OrderedRecords]),
+%  sql_insert_list(OrderedRecords).
+  run_insert(OrderedRecords).  
+
+
+
+run_insert(Records) when is_list(Records) ->
+  lists:foldl(fun(F,Acc) -> 
+    Acc ++ [run_insert(F)]
+  end,[],Records);
+
+save(Model) ->
+  case ready_to_save(Sql) of
+    {ready,Sql} -> save(Sql)
+    {not_ready,Model} -> save(Model)
+  end.
+
+ready_to_save(Model) ->
+  
+
+run_insert(Record) ->
+  Name = hd(tuple_to_list(Record)),
+  RecordDef = new_record(Name),
+  Stmts = lists:foldl(fun(F,Acc) ->
+    case has_relation(RecordDef,F) of
+    {references,Ref} ->
+      case has_null(RecordDef,F) of
+	{null,false} -> Acc ++ run_insert(get_value(F,Record)); %% RUN LOGIC FOR REF FIRST
+	{null,true} -> run_insert(get_value(F,Record)) ++ Acc %% RETURN FIRST AND THEN RUN LOGIC FOR REF
+      end;
+    {one_to_many,Ref} ->
+      run_insert(get_value(F,Record)) ++ Acc; %% RETURN AND TEN RUN LOGIC FOR FIRST
+    _ -> Acc ++ []
+  end
+  end,[Name],fields(Name)),
+  Stmts.
+
+
+
+
+
+
+
+
+
 
 %% @doc Creates a list of records to be transformed into SQL statements.
 %% The records in the list follow the order of transformation i.e. the list is 
 %% ordered.
-  
+
 model_records(Model) ->
   List = lists:reverse(relation_record(Model)),
   List ++ [Model].
@@ -326,8 +391,10 @@ sql_insert_values(Record) ->
   Name = hd(tuple_to_list(Record)),
   {Insert,Value} = sql_insert_values(Record,new_record(Name),fields(Name),[],[],1),
   "INSERT INTO " ++ has_value(schema,?SCHEMA) ++ value_to_string(Name) ++ " ( " ++
-  Insert ++ " ) VALUES ( " ++ Value ++ " );". 
+  Insert ++ " ) VALUES ( " ++ Value ++ " ) RETURNING id;". 
 
+sql_insert_values(Record,RecordDef,[id|Fs],Insert,Value,ParamCount) ->
+  sql_insert_values(Record,RecordDef,Fs,Insert,Value,ParamCount);
 sql_insert_values(Record,RecordDef,[F|Fs],Insert,Value,ParamCount) ->
   Inserts = Insert ++ value_to_string(F) ++ ", ",  
   Type = estore_utils:get_value(type,get_value(F,RecordDef),undefined),
@@ -359,17 +426,6 @@ format_to_sql(_Quoted,Value) ->
 %% --------------------------- CONVERTERS --------------------------------------
 %% -----------------------------------------------------------------------------
 
-convert_fields(Record) ->
-  Name = hd(tuple_to_list(Record)),
-  lists:foldl(fun(E,Acc) -> 
-    FldTuple = {{Name,E},get_value(E,Record)},
-    Acc ++ convert_field(FldTuple)
-  end,"id bigserial PRIMARY KEY,",fields(Name)).
-  
-convert_field({{Table,Field},FldOpts}) ->
-  value_to_string(Field) ++ " " ++
-  strip_comma(options_to_string({field,{Table,Field}},FldOpts)) ++ ", ".
-
 %% -----------------------------------------------------------------------------
 
 options_to_string({field,{T,F}},FldOpts) ->
@@ -388,14 +444,14 @@ options_to_string({options,Key},Options) when is_list(Options) ->
 options_to_string({options,_},undefined) ->
   [];
 
-options_to_string({constraints,{_T,_F}},{one_to_many,_Ref}) ->
-  "";
 options_to_string({constraints,{_T,_F}},{references,Ref}) ->
   "REFERENCES " ++ value_to_string(Ref) ++ " (id) ";
 options_to_string({constraints,{_T,_F}},{null,false}) ->
   value_to_string('not') ++ " " ++ value_to_string(null)++ " ";
 options_to_string({constraints,{_T,_F}},{null,true}) ->
   value_to_string(null) ++ " ";
+options_to_string({constraints,{_T,_F}},{pk,_Opts}) ->
+  "PRIMARY KEY ";
 options_to_string({constraints,{T,F}},undefined) ->
   options_to_string({constraints,{T,F}},{null,true});
 options_to_string({constraints,{T,F}},ConstraintsList) ->
@@ -422,6 +478,7 @@ options_to_string('type',{Type,FldOpts}) ->
 
 options_to_string(_Key,undefined) ->
   [].
+
 
 
 
@@ -460,6 +517,8 @@ maybe_references(_Constraints,undefined) ->
 maybe_references(_Constraints,Ref) ->
   {references,Ref}.
 
+relation_table_name(Table,Ref) ->
+  value_to_string(Table) ++ "_" ++ value_to_string(Ref).
 
 has_null(Constraints) ->
   case estore_utils:get_value(null,Constraints,false) of

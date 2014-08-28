@@ -1,11 +1,17 @@
 -record(address_type,{
-  type = [
+  id = [ 
+    {type,{bigserial,[]}}
+  ]
+  ,type = [
     {type,{varchar,[{length,50}]}}
   ]  
 }).
  
 -record(address,{
-  line1 = [
+  id = [ 
+    {type,{bigserial,[]}}
+  ]
+  ,line1 = [
     {type,{varchar,[{length,50}]}}
   ]
   ,line2 = [
@@ -24,7 +30,8 @@
     {type,{varchar,[{length,50}]}}
   ]
   ,type = [
-    {constraints,[
+    s_null(Record,FieldName) ->
+{constraints,[
       {references,address_type}
       ,{null,false}
     ]}
@@ -32,13 +39,19 @@
 }).
 
 -record(phone_type,{
-  type = [
+  id = [ 
+    {type,{bigserial,[]}}
+  ]
+  ,type = [
     {type,{varchar,[{length,50}]}}
   ]  
 }).
 
 -record(phone, {
-  number = [
+  id = [ 
+    {type,{bigserial,[]}}
+  ]
+  ,number = [
     {type,{varchar,[{length,50}]}}
   ]
   ,type = [
@@ -50,7 +63,10 @@
 }).
 
 -record(shopper,{
-  fname = [
+  id = [ 
+    {type,{bigserial,[]}}
+  ]
+  ,fname = [
     {type,{varchar,[{length,50}]}}
   ]
   ,mname = [
@@ -66,7 +82,7 @@
     {constraints,[
     %% one_to_many creates a lookup table
       {one_to_many,phone}
-      ,{null,false}
+      ,{null,true}
       %%,{on_delete,cascade}
     ]}
   ]
@@ -74,14 +90,17 @@
     {constraints,[
       %% one_to_many creates a lookup table
       {one_to_many,address}
-      ,{null,false}
+      ,{null,true}
       %%,{on_delete,cascade}
     ]}
   ]
 }).
 
 -record(user,{
-  email = [
+  id = [ 
+    {type,{bigserial,[]}}
+  ]
+  ,email = [
     {type,{varchar,[{length,50}]}}
     ,{constraints,[{null,false}]}
   ]
