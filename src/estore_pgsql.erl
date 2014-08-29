@@ -309,50 +309,11 @@ save_model(Model) ->
 
 %  has_relation(Record,FieldName)  
   OrderedRecords = model_records(Model),
-%  io:fwrite("~n ~p ~n",[OrderedRecords]),
-%  sql_insert_list(OrderedRecords).
-  run_insert(OrderedRecords).  
-
-
-
-run_insert(Records) when is_list(Records) ->
-  lists:foldl(fun(F,Acc) -> 
-    Acc ++ [run_insert(F)]
-  end,[],Records);
-
-save(Model) ->
-  case ready_to_save(Sql) of
-    {ready,Sql} -> save(Sql)
-    {not_ready,Model} -> save(Model)
-  end.
-
-ready_to_save(Model) ->
-  
-
-run_insert(Record) ->
-  Name = hd(tuple_to_list(Record)),
-  RecordDef = new_record(Name),
-  Stmts = lists:foldl(fun(F,Acc) ->
-    case has_relation(RecordDef,F) of
-    {references,Ref} ->
-      case has_null(RecordDef,F) of
-	{null,false} -> Acc ++ run_insert(get_value(F,Record)); %% RUN LOGIC FOR REF FIRST
-	{null,true} -> run_insert(get_value(F,Record)) ++ Acc %% RETURN FIRST AND THEN RUN LOGIC FOR REF
-      end;
-    {one_to_many,Ref} ->
-      run_insert(get_value(F,Record)) ++ Acc; %% RETURN AND TEN RUN LOGIC FOR FIRST
-    _ -> Acc ++ []
-  end
-  end,[Name],fields(Name)),
-  Stmts.
-
-
-
-
-
-
-
-
+  io:fwrite("~n~n ~p ~n~n",[OrderedRecords]),
+  SqlPlan = sql_insert_list(OrderedRecords),
+  io:fwrite("~n~n ~p ~n~n",[SqlPlan]),
+  sql_plan(SqlPlan).
+%  run_insert(Model).  
 
 
 %% @doc Creates a list of records to be transformed into SQL statements.
@@ -361,52 +322,68 @@ run_insert(Record) ->
 
 model_records(Model) ->
   List = lists:reverse(relation_record(Model)),
-  List ++ [Model].
+  List ++ [{Model,[]}].
 
 relation_record(Model) ->
   Name = hd(tuple_to_list(Model)), 
-  relation_records(Model,fields(Name),[]).
+  relation_records(Model,new_record(Name),fields(Name),[]).
 
-relation_records(Record,[F|Fs],Result) ->
+relation_records(Record,RecordDef,[F|Fs],Result) ->
+  Name = hd(tuple_to_list(Record)), 
   FieldVal = get_value(F,Record),
-  case is_tuple(FieldVal) of
-    true ->
-      NewResult = Result ++ [FieldVal],
-      relation_records(Record,Fs,NewResult ++ relation_record(FieldVal));
-    false -> relation_records(Record,Fs,Result)
+  case has_relation(RecordDef,F) of
+    {references,_Ref} ->
+      NewResult = Result ++ [{FieldVal,relation_record(FieldVal)}],
+      relation_records(Record,RecordDef,Fs,NewResult);
+    {one_to_many,Ref} ->
+      NewResult = Result ++ [{relation_action,[{Name,Ref}]}] ++ [{FieldVal,relation_record(FieldVal)}],
+      relation_records(Record,RecordDef,Fs,NewResult);
+    _NoRelation -> 
+      relation_records(Record,RecordDef,Fs,Result)
   end;
-relation_records(_Record,[],Result) ->
+relation_records(_Record,_RecordDef,[],Result) ->
   Result.
-
 
 %% @doc Turns records from the list into SQL statements preserving the order.
 
-sql_insert_list(OrderedRecords) ->
-  lists:foldl(fun(E,Acc) -> 
-    Acc ++ [sql_insert_values(E)]
-  end,[],OrderedRecords).
+sql_insert_list(Records) ->
+  sql_insert_list(Records,[]).
 
+sql_insert_list([Record|Records],SqlPlan) ->
+  Plan = case Record of 
+    {relation_action,Opts} -> [{relation_action,Opts}];
+    {Tuple,[]} -> [{sql_insert_values(Tuple),[]}];
+    {Tuple,List} -> [{sql_insert_values(Tuple),sql_insert_list(List)}]
+  end,
+  sql_insert_list(Records,SqlPlan ++ Plan);
+sql_insert_list([],SqlPlan) ->
+  SqlPlan.
 
 sql_insert_values(Record) ->
   Name = hd(tuple_to_list(Record)),
   {Insert,Value} = sql_insert_values(Record,new_record(Name),fields(Name),[],[],1),
-  "INSERT INTO " ++ has_value(schema,?SCHEMA) ++ value_to_string(Name) ++ " ( " ++
-  Insert ++ " ) VALUES ( " ++ Value ++ " ) RETURNING id;". 
+  {Name,"INSERT INTO " ++ has_value(schema,?SCHEMA) ++ value_to_string(Name) ++ " ( " ++
+  Insert ++ " ) VALUES ( " ++ Value ++ " ) RETURNING id;"}. 
 
 sql_insert_values(Record,RecordDef,[id|Fs],Insert,Value,ParamCount) ->
   sql_insert_values(Record,RecordDef,Fs,Insert,Value,ParamCount);
 sql_insert_values(Record,RecordDef,[F|Fs],Insert,Value,ParamCount) ->
-  Inserts = Insert ++ value_to_string(F) ++ ", ",  
   Type = estore_utils:get_value(type,get_value(F,RecordDef),undefined),
   case has_relation(RecordDef,F) of
-    Relation when is_tuple(Relation) -> 
+    {references,_Relation} -> 
+      Inserts = Insert ++ value_to_string(F) ++ ", ",
       Count = ParamCount + 1,
-      Formatted = "$" ++ integer_to_list(ParamCount);
-    _ -> 
-      Count = ParamCount + 0, 
-      Formatted = format_to_sql(Type,get_value(F,Record))
+      Formatted = "$" ++ integer_to_list(ParamCount)  ++ ", ";
+    {one_to_many,_Relation} -> 
+      Inserts = Insert,
+      Count = ParamCount,
+      Formatted = "";
+    _ ->
+      Inserts = Insert ++ value_to_string(F) ++ ", ",
+      Count = ParamCount,
+      Formatted = format_to_sql(Type,get_value(F,Record)) ++ ", "
   end,
-  Values = Value ++ Formatted ++ ", ",
+  Values = Value ++ Formatted,
   sql_insert_values(Record,RecordDef,Fs,Inserts,Values,Count);
 sql_insert_values(_Record,_RecordDef,[],Inserts,Values,_ParamCount) ->
   {strip_comma(Inserts),strip_comma(Values)}.
@@ -422,11 +399,24 @@ format_to_sql('integer',Value) ->
 format_to_sql(_Quoted,Value) ->
   "'" ++ value_to_string(Value) ++ "'".
 
+sql_plan(SqlPlan) ->
+  sql_plan(SqlPlan,[]).
+sql_plan([{relation_action,Opts}|Sqls],Result) ->
+  sql_plan(Sqls,Result ++ [{relation_action,Opts}]);
+sql_plan([{{Name,Sql},[]}|Sqls],Result) ->
+  sql_plan(Sqls,Result ++ [{Name,Sql}]);
+sql_plan([{{Name,Sql},List}|Sqls],Result) ->
+  sql_plan(Sqls,Result ++ sql_plan(List) ++ [{Name,Sql}]);
+sql_plan([],Result) ->  
+  Result.
+
+
+%% -----------------------------------------------------------------------------
+
 %% -----------------------------------------------------------------------------
 %% --------------------------- CONVERTERS --------------------------------------
 %% -----------------------------------------------------------------------------
 
-%% -----------------------------------------------------------------------------
 
 options_to_string({field,{T,F}},FldOpts) ->
   Type = options_to_string(type,estore_utils:get_value(type,FldOpts,{'bigint',[]})),

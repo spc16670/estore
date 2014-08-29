@@ -30,8 +30,7 @@
     {type,{varchar,[{length,50}]}}
   ]
   ,type = [
-    s_null(Record,FieldName) ->
-{constraints,[
+    {constraints,[
       {references,address_type}
       ,{null,false}
     ]}
@@ -59,7 +58,7 @@
       {references,phone_type}
       ,{null,false}
     ]}
-  ]  
+  ] 
 }).
 
 -record(shopper,{

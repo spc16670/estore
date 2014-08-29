@@ -33,10 +33,14 @@ new(Module,Model) when Model =:= 'shopper' ->
   PhoneTypeRecord = estore:new(Module,'phone_type'),
   PhoneType = PhoneTypeRecord#'phone_type'{'type' = "Mobile"},
   PhoneRecord = estore:new(Module,'phone'),
-  Phone = PhoneRecord#'phone'{'number' = "07871259234", 'type' = PhoneType},
+
   AddressTypeRecord = estore:new(Module,'address_type'),
   AddressType = AddressTypeRecord#'address_type'{'type' = "Residential"},
   AddressRecord = estore:new(Module,'address'),
+
+
+  Phone = PhoneRecord#'phone'{'number' = "07871259234", 'type' = PhoneType},
+
   Address = AddressRecord#'address'{
     'line1' = "Flat 1/2"
     ,'line2' = "56 Cecil St"
