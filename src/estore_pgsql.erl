@@ -69,7 +69,8 @@
 
 -compile({parse_transform,estore_dynarec}).
 
--define(QUERY(Sql),squery(Sql)).
+-define(SQUERY(Sql),squery(Sql)).
+-define(EQUERY(Sql,Args),equery(Sql,Args)).
 -define(SCHEMA,get_schema()).
 -define(POOL,get_pool()).
 
@@ -147,7 +148,7 @@ new_model(F,Record,{null,false},Ref) ->
 
 drop_schema(Schema) ->
   case schema_exists(Schema) of
-    true -> ?QUERY(sql_drop_schema(Schema));
+    true -> ?SQUERY(sql_drop_schema(Schema));
     false -> ok
   end.
 
@@ -162,7 +163,7 @@ sql_drop_schema(Schema,Opts) ->
 
 create_schema(Schema) ->
   case schema_exists(Schema) of
-    false -> ?QUERY(sql_create_schema(Schema)); 
+    false -> ?SQUERY(sql_create_schema(Schema)); 
     true -> ok
   end.
     
@@ -175,7 +176,7 @@ sql_create_schema(Schema,Op) ->
 %% -----------------------------------------------------------------------------
 
 schema_exists(Schema) ->
-  case ?QUERY(sql_schema_exists(Schema)) of
+  case ?SQUERY(sql_schema_exists(Schema)) of
     {ok,_ColInfo,[{SchemaBin}]} when is_binary(SchemaBin) -> true;
     {ok,_ColInfo,[]} -> false
   end.
@@ -191,7 +192,7 @@ sql_schema_exists(Schema) ->
 create_tables(Records) ->
   Sql = sql_create_tables(Records),
   lists:foldl(fun(E,Acc) -> 
-    Acc ++ [?QUERY(E)]
+    Acc ++ [?SQUERY(E)]
   end,[],Sql).
 
 sql_create_tables(Records) ->
@@ -219,7 +220,7 @@ sql_create_relation_table(Record,Field) ->
   end.
 
 create_table(Record) ->
-  ?QUERY(sql_create_table(Record)).
+  ?SQUERY(sql_create_table(Record)).
 
 sql_create_table(Record) ->
   sql_create_table(Record,[{ifexists,false}]).
@@ -311,8 +312,8 @@ save_model(Model) ->
   OrderedRecords = model_records(Model),
   io:fwrite("~n~n ~p ~n~n",[OrderedRecords]),
   SqlPlan = sql_insert_list(OrderedRecords),
-  io:fwrite("~n~n ~p ~n~n",[SqlPlan]),
-  sql_plan(SqlPlan).
+  Plan = sql_plan(SqlPlan),
+  execute_sql_plan(Plan).
 %  run_insert(Model).  
 
 
@@ -336,7 +337,7 @@ relation_records(Record,RecordDef,[F|Fs],Result) ->
       NewResult = Result ++ [{FieldVal,relation_record(FieldVal)}],
       relation_records(Record,RecordDef,Fs,NewResult);
     {one_to_many,Ref} ->
-      NewResult = Result ++ [{relation_action,[{Name,Ref}]}] ++ [{FieldVal,relation_record(FieldVal)}],
+      NewResult = Result ++ [{relation_action,{Name,Ref}}] ++ [{FieldVal,relation_record(FieldVal)}],
       relation_records(Record,RecordDef,Fs,NewResult);
     _NoRelation -> 
       relation_records(Record,RecordDef,Fs,Result)
@@ -361,32 +362,35 @@ sql_insert_list([],SqlPlan) ->
 
 sql_insert_values(Record) ->
   Name = hd(tuple_to_list(Record)),
-  {Insert,Value} = sql_insert_values(Record,new_record(Name),fields(Name),[],[],1),
-  {Name,"INSERT INTO " ++ has_value(schema,?SCHEMA) ++ value_to_string(Name) ++ " ( " ++
-  Insert ++ " ) VALUES ( " ++ Value ++ " ) RETURNING id;"}. 
+  {Insert,Value,Params} = sql_insert_values(Record,new_record(Name),fields(Name),[],[],[],1),
+  {Name,{"INSERT INTO " ++ has_value(schema,?SCHEMA) ++ value_to_string(Name) ++ " ( " ++
+  Insert ++ " ) VALUES ( " ++ Value ++ " ) RETURNING id;",Params}}. 
 
-sql_insert_values(Record,RecordDef,[id|Fs],Insert,Value,ParamCount) ->
-  sql_insert_values(Record,RecordDef,Fs,Insert,Value,ParamCount);
-sql_insert_values(Record,RecordDef,[F|Fs],Insert,Value,ParamCount) ->
+sql_insert_values(Record,RecordDef,[id|Fs],Insert,Value,Params,ParamCount) ->
+  sql_insert_values(Record,RecordDef,Fs,Insert,Value,Params,ParamCount);
+sql_insert_values(Record,RecordDef,[F|Fs],Insert,Value,Params,ParamCount) ->
   Type = estore_utils:get_value(type,get_value(F,RecordDef),undefined),
   case has_relation(RecordDef,F) of
-    {references,_Relation} -> 
+    {references,Relation} -> 
       Inserts = Insert ++ value_to_string(F) ++ ", ",
       Count = ParamCount + 1,
-      Formatted = "$" ++ integer_to_list(ParamCount)  ++ ", ";
+      Formatted = "$" ++ integer_to_list(ParamCount)  ++ ", ",
+      NewParams = Params ++ [{Relation,ParamCount}];
     {one_to_many,_Relation} -> 
       Inserts = Insert,
       Count = ParamCount,
-      Formatted = "";
+      Formatted = "",
+      NewParams = Params;
     _ ->
       Inserts = Insert ++ value_to_string(F) ++ ", ",
       Count = ParamCount,
-      Formatted = format_to_sql(Type,get_value(F,Record)) ++ ", "
+      Formatted = format_to_sql(Type,get_value(F,Record)) ++ ", ",
+      NewParams = Params
   end,
   Values = Value ++ Formatted,
-  sql_insert_values(Record,RecordDef,Fs,Inserts,Values,Count);
-sql_insert_values(_Record,_RecordDef,[],Inserts,Values,_ParamCount) ->
-  {strip_comma(Inserts),strip_comma(Values)}.
+  sql_insert_values(Record,RecordDef,Fs,Inserts,Values,NewParams,Count);
+sql_insert_values(_Record,_RecordDef,[],Inserts,Values,Params,_ParamCount) ->
+  {strip_comma(Inserts),strip_comma(Values),Params}.
 
 format_to_sql(_Type,'undefined') ->
   value_to_string('null');
@@ -410,8 +414,54 @@ sql_plan([{{Name,Sql},List}|Sqls],Result) ->
 sql_plan([],Result) ->  
   Result.
 
+execute_sql_plan(SqlPlan) ->
+  execute_sql_plan(SqlPlan,[]).
 
-%% -----------------------------------------------------------------------------
+%% Carry is empty for the relation_action so advance its position 
+execute_sql_plan([{relation_action,Relations}|StmtTuples],[]) ->
+  Stmts = StmtTuples ++ [{relation_action,Relations}],
+  execute_sql_plan(Stmts,[]);
+
+%% Carry is not empty so check if we have ids' for all Relations
+%% if not advance relation_action's position 
+execute_sql_plan([{relation_action,{Table,Ref}}|StmtTuples],Carry) ->
+  TableId = estore_utils:get_value(Table,Carry,undefined), 
+  RefId = estore_utils:get_value(Ref,Carry,undefined),
+  if TableId /= undefined andalso RefId /= undefined ->
+    NewCarry = Carry -- [{Table,Ref}], 
+    NewStmtTuples = StmtTuples,
+    Sql = "INSER INTO " ++ has_value(schema,?SCHEMA) 
+    ++ relation_table_name(Table,Ref) ++ " VALUES ($1, $2);",
+    ?EQUERY(Sql,[TableId,RefId]); 
+  true ->
+    NewStmtTuples = StmtTuples ++ [{relation_action,{Table,Ref}}],
+    NewCarry = Carry
+  end,
+  execute_sql_plan(NewStmtTuples,NewCarry);
+
+%% Carry is not empty, run statements
+execute_sql_plan([{Head,{Sql,ParamTuples}}|StmtTuples],Carry) ->
+  {NewCarry,Params} = get_parameters(Carry,{Head,ParamTuples},[]),
+  {ok,_No,_Col,[{Id}]} = ?EQUERY(Sql,Params),
+  execute_sql_plan(StmtTuples,NewCarry ++ [{Head,Id}]);
+
+%% Done
+execute_sql_plan([],Carry) ->
+  Carry.   
+
+get_parameters(Carry,{Head,[{ParamKey,_Pos}|ParamTuples]},ParamList) ->
+  case estore_utils:get_value(ParamKey,Carry,undefined) of
+    undefined -> 
+      io:fwrite("WTF",[]), 
+      NewCarry = Carry, 
+      Params = [];
+    Id ->
+      NewCarry = Carry -- [{ParamKey,Id}],
+      Params = ParamList ++ [Id]
+  end,
+  get_parameters(NewCarry,{Head,ParamTuples},Params);
+get_parameters(Carry,{_Head,[]},ParamList) ->
+  {Carry,ParamList}.
 
 %% -----------------------------------------------------------------------------
 %% --------------------------- CONVERTERS --------------------------------------
