@@ -3,11 +3,6 @@
 -export([
   create_index/3
   ,create_index/4
-  ,select/1
-  ,select/2
-  ,select/3
-  ,select/4
-  ,select/5
   ,select_index/1
   ,select_index/2
   ,transaction/1
@@ -15,9 +10,6 @@
   ,drop_table/1
   ,drop_table/2
   ,drop_table/3
-  ,table_info/3
-  ,where/1
-  ,where_to_string/1
 ]).
 
 -export([
@@ -303,22 +295,14 @@ sql_one_to_many(Table,Ref,_Constraints) ->
 
 
 save_model(Model) ->
-  %% get all records composing the model
-  %% put the records in an order to run them observing constraint declarations
-  %% check ofor the existence of id field for every record, if it is there create statement for update otherwise insert
-  %% add any needed updates/inserts to the relation lookup tables and amend the order
-
-%  has_relation(Record,FieldName)  
   OrderedRecords = model_records(Model),
   io:fwrite("~n~n ~p ~n~n",[OrderedRecords]),
-  SqlPlan = sql_insert_list(OrderedRecords),
+  SqlPlan = sql_save_list(OrderedRecords),
   Plan = sql_plan(SqlPlan),
   execute_sql_plan(Plan).
-%  run_insert(Model).  
-
 
 %% @doc Creates a list of records to be transformed into SQL statements.
-%% The records in the list follow the order of transformation i.e. the list is 
+%% The records in the list follow the order of sql execution i.e. the list is 
 %% ordered.
 
 model_records(Model) ->
@@ -347,24 +331,34 @@ relation_records(_Record,_RecordDef,[],Result) ->
 
 %% @doc Turns records from the list into SQL statements preserving the order.
 
-sql_insert_list(Records) ->
-  sql_insert_list(Records,[]).
+sql_save_list(Records) ->
+  sql_save_list(Records,[]).
 
-sql_insert_list([Record|Records],SqlPlan) ->
+sql_save_list([Record|Records],SqlPlan) ->
   Plan = case Record of 
     {relation_action,Opts} -> [{relation_action,Opts}];
-    {Tuple,[]} -> [{sql_insert_values(Tuple),[]}];
-    {Tuple,List} -> [{sql_insert_values(Tuple),sql_insert_list(List)}]
+    {Tuple,[]} -> [{sql_save_values(Tuple),[]}];
+    {Tuple,List} -> [{sql_save_values(Tuple),sql_save_list(List)}]
   end,
-  sql_insert_list(Records,SqlPlan ++ Plan);
-sql_insert_list([],SqlPlan) ->
+  sql_save_list(Records,SqlPlan ++ Plan);
+sql_save_list([],SqlPlan) ->
   SqlPlan.
+
+%% @doc Turns a record into a {RecordAtom,{SqlString,ParamList}} tuple.
+
+sql_save_values(Record) ->
+  case get_value(id,Record) of
+    undefined -> 
+      sql_insert_values(Record);
+    _Id ->
+      sql_update_values(Record)
+  end.
+
+%% @private INSERT ignores record ids.
 
 sql_insert_values(Record) ->
   Name = hd(tuple_to_list(Record)),
-  {Insert,Value,Params} = sql_insert_values(Record,new_record(Name),fields(Name),[],[],[],1),
-  {Name,{"INSERT INTO " ++ has_value(schema,?SCHEMA) ++ value_to_string(Name) ++ " ( " ++
-  Insert ++ " ) VALUES ( " ++ Value ++ " ) RETURNING id;",Params}}. 
+  sql_insert_values(Record,new_record(Name),fields(Name),[],[],[],1).
 
 sql_insert_values(Record,RecordDef,[id|Fs],Insert,Value,Params,ParamCount) ->
   sql_insert_values(Record,RecordDef,Fs,Insert,Value,Params,ParamCount);
@@ -389,8 +383,15 @@ sql_insert_values(Record,RecordDef,[F|Fs],Insert,Value,Params,ParamCount) ->
   end,
   Values = Value ++ Formatted,
   sql_insert_values(Record,RecordDef,Fs,Inserts,Values,NewParams,Count);
-sql_insert_values(_Record,_RecordDef,[],Inserts,Values,Params,_ParamCount) ->
-  {strip_comma(Inserts),strip_comma(Values),Params}.
+sql_insert_values(Record,_RecordDef,[],Inserts,Values,Params,_ParamCount) -> 
+  Name = hd(tuple_to_list(Record)),
+  {Name,{"INSERT INTO " ++ has_value(schema,?SCHEMA) ++ value_to_string(Name) ++ " ( " ++
+  strip_comma(Inserts) ++ " ) VALUES ( " ++ strip_comma(Values) ++ " ) RETURNING id;",Params}}. 
+
+%% @doc UPDATE statements..
+
+sql_update_values(_Record) ->
+  ok.
 
 format_to_sql(_Type,'undefined') ->
   value_to_string('null');
@@ -519,8 +520,19 @@ options_to_string('type',{Type,FldOpts}) ->
 options_to_string(_Key,undefined) ->
   [].
 
+value_to_string(V) when is_atom(V) andalso V /= undefined ->
+  atom_to_list(V); 
+value_to_string(V) when is_integer(V) ->
+  integer_to_list(V);
+value_to_string({Mega,S,Micro}) when is_integer(S) ->
+  integer_to_list(Mega) ++ integer_to_list(S) ++ integer_to_list(Micro);
+value_to_string(V) when is_list(V) ->
+  V;
+value_to_string(_V) ->
+  [].
 
-
+has_value(schema,V) when V /= undefined ->
+  value_to_string(V) ++ ".".
 
 %% -----------------------------------------------------------------------------
 %% ----------------------------- UTILITIES -------------------------------------
@@ -578,89 +590,25 @@ strip_comma(String) ->
 %% -----------------------------------------------------------------------------
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-select({S,T,A}) ->
-  select([{S,T,A}]);
-select({S,T}) ->
-  select({S,T,undefined});
-select(T) when is_atom(T) ->
-  select({undefined,T,undefined});
-select(Ts) when is_list(Ts) ->
-  select(Ts,['*']).
-
-select({S,T,A},Fs) when is_atom(T) ->
-  select({S,T,A},Fs,undefined,undefined);
-select({S,T},Fs) when is_atom(T) ->
-  select({S,T,undefined},Fs,undefined,undefined);
-select(T,Fs) when is_atom(T) ->
-  select({undefined,T,undefined},Fs,undefined,undefined);
-select(Ts,Fs) when is_list(Ts) ->
-  select(Ts,Fs,undefined,undefined).
-
-select({S,T,A},Fs,W) when is_atom(T) ->
-  select({S,T,A},Fs,W,undefined);
-select({S,T},Fs,W) when is_atom(T) ->
-  select({S,T,undefined},Fs,W,undefined);
-select(T,Fs,W) when is_atom(T) ->
-  select({undefined,T,undefined},Fs,W,undefined);
-select(Ts,Fs,W) when is_list(Ts) ->
-  select(Ts,Fs,W,undefined).
-  
-select({S,T,A},Fs,W,G) when is_atom(T) -> 
-  select([{S,T,A}],Fs,undefined,W,G);
-select({S,T},Fs,W,G) when is_atom(T) -> 
-  select({S,T,undefined},Fs,undefined,W,G);
-select(T,Fs,W,G) when is_atom(T) -> 
-  select({undefined,T,undefined},Fs,undefined,W,G);
-select(Ts,Fs,W,G) when is_list(Ts) -> 
-  select(Ts,Fs,undefined,W,G).
-
-select({S,T,A},Fs,J,W,G) ->
-  select([{S,T,A}],Fs,J,W,G);
-select({S,T},Fs,J,W,G) when is_atom(T) ->
-  select({S,T,undefined},Fs,J,W,G);
-select(T,Fs,J,W,G) when is_atom(T) ->
-  select({undefined,T,T},Fs,J,W,G);
-select(Ts,Fs,J,W,G) when is_list(Ts) ->
-  "SELECT " ++ field_to_string(Fs) ++ " FROM " 
-  ++ " " ++ join(J) ++ "" ++ where(W) ++ groupby(G) ++ ";".
  
 create_index(N,T,Cs) when is_atom(T) ->
   create_index(N,T,Cs,undefined).
 create_index(N,T,Cs,Ops) when is_atom(T) ->
   create_index(N,{undefined,T},Cs,Ops);
-create_index(N,{S,T},Cs,Ops) ->
+create_index(N,{S,T},_Cs,Ops) ->
   "CREATE INDEX " ++ options_to_string(nolock,Ops) ++ " " ++ value_to_string(N) 
   ++ " ON " ++ has_value(schema,S) ++ value_to_string(T) 
-  ++ " (" ++ field_to_string(Cs) ++ ");".
+  ++ " (" ++ "Fields here - cs" ++ ");".
 
 select_index(I) ->
   select_index(undefined,I).
-select_index(S,I) ->
-  Tables = [{undefined,pg_class,t},{undefined,pg_class,i},{undefined,pg_index,ix}
-    ,{undefined,pg_attribute,a},{undefined,pg_namespace,n}],
-  Fields = [{n,nspname},{i,relname}],
-  Where = [{{t,oid},'=',{ix,indexrelid}}
-    ,'AND',{{t,relnamespace},'=',{n,oid}}
-    ,'AND',{{i,oid},'=',{ix,indexrelid}}
-    ,'AND',{{n,nspname},'LIKE',value_to_string(S) ++ "%"}
-    ,'AND',{{t,relname},'LIKE',value_to_string(I) ++ "%"}],
-  select(Tables,Fields,Where,Fields).
+select_index(_S,_I) ->
+  "SELECT n.nspname, i.relname FROM pg_class t, pg_class i, pg_index ix, pg_attribute a, pg_namespace n 
+  WHERE t.oid = ix.relname 
+  AND t.relnamespace = n.oid
+  AND i.oid = ix.indexrelid
+  AND n.nspname LIKE lamazone%
+  AND t.relanme LIKE lamazone%".
 
 transaction(Stmt) ->
   "BEGIN;\n " ++ Stmt ++ "COMMIT;\n".
@@ -668,145 +616,7 @@ transaction(Stmt) ->
 rollback() ->
   "ROLLBACK;".
 
-table_info(D,S,T) ->
-  select({information_schema,columns},[column_name,ordinal_position,data_type
-    ,is_nullable,character_maximum_length,numeric_precision,numeric_scale]
-    ,[{table_catalog,'=',value_to_string(D)},'AND',{table_schema,'=',value_to_string(S)}
-    ,'AND',{table_name,'=',value_to_string(T)}]).
 
 %% ------------------------------------------------------------------------------
 
-
-%% GROUP BY
-
-groupby(undefined) ->
-  [];
-groupby(G) when is_list(G) ->
-  " GROUP BY " ++ field_to_string(G).
-
-%% JOIN
-%% [{{'LEFT OUTER JOIN',{schema,othertable,o}},'ON',{{'T',name},'=',{'O',name}}}]
-
-join(undefined) ->
-  [];
-join(J) when is_list(J) ->
-  lists:foldl(fun(E,Acc) -> Acc ++ " " ++ join_to_string(E) end,[],J).
-
-join_to_string(V) when is_atom(V) ->
-  value_to_string(V);
-join_to_string({J,{T,A}}) when is_atom(J) ->
-  join_to_string({J,{undefined,T,A}});
-join_to_string({J,{S,T,_A}}) when is_atom(J) ->
-  value_to_string(J) ++ has_value(schema,S) ++ value_to_string(T) ++ " ";
-join_to_string({J,C}) when is_atom(J) andalso is_atom(C) ->
-  where_to_string({J,C});
-join_to_string({F1,T,F2}) ->
-  where_to_string({F1,T,F2}).
-
-%% WHERE
-%% [{{'C',gender},'=',"M"},'AND',[{{'C',age},'=',20},'OR',{{'C',age},'=',25}],'AND',{{'C',name},'LIKE',{'S',name}}]
-
-where(undefined) ->
-  [];
-where(W) when is_list(W) -> 
-  " WHERE " ++ lists:foldl(fun(E,Acc) -> Acc ++ " " ++ where_to_string(E) end,[],W).
-
-where_to_string(V) when is_atom(V) ->
-  value_to_string(V);
-where_to_string({J,C}) when is_atom(J) ->
-  value_to_string(J) ++ "." ++ value_to_string(C);
-where_to_string(V) when is_integer(V) ->
-  value_to_string(V);
-where_to_string(V) when is_float(V) ->
-  value_to_string(V); 
-where_to_string({F1,T,F2}) ->
-  where_to_string(F1) ++ " " ++ where_to_string(T) ++ " " ++ where_to_string(F2);  
-where_to_string(V) when is_list(V) ->
-  case io_lib:printable_unicode_list(V) of
-    false ->
-      "(" ++ lists:foldl(fun(E,Acc) -> Acc ++ " " ++ where_to_string(E) end,[],V) ++ ")";
-    true ->
-       "'" ++ V ++ "'"
-  end.
-
-field_to_string(#{name := N,type := T,length := L,null := I} = _F) ->
-  NStr = value_to_string(N), TStr = value_to_string(T),
-  if NStr /= [] andalso TStr /= [] -> 
-    NStr ++ " " ++ TStr ++ " " ++ has_value(length,L) ++ " " ++ has_value(null,I);
-  true -> [] end;
-field_to_string(Fs) when is_list(Fs) ->
-  field_to_string(Fs,hd(Fs));
-field_to_string(Fs) when is_atom(Fs) ->
-  value_to_string(Fs).
-
-field_to_string(Fs,F1) when is_atom(F1) ->
-  string:strip(lists:foldl(fun(E,Acc) -> Acc ++ "," ++ atom_to_list(E) end,[],Fs),left,$,);
-field_to_string(Fs,F1) when is_tuple(F1) ->
-  string:strip(lists:foldl(fun(E,Acc) -> Acc ++ "," ++ where_to_string(E) end,[],Fs),left,$,);
-field_to_string(Fs,F1) when is_map(F1) ->
-  string:strip(lists:foldl(fun(E,Acc) -> Acc ++ ",\n" ++ field_to_string(E) end,[],Fs),left,$,).
-
-value_to_string(V) when is_atom(V) andalso V /= undefined ->
-  atom_to_list(V); 
-value_to_string(V) when is_integer(V) ->
-  integer_to_list(V);
-value_to_string(V) when is_float(V) ->
-  float_to_list(V,[{decimals,12},compact]);
-value_to_string({Mega,S,Micro}) when is_integer(S) ->
-  integer_to_list(Mega) ++ integer_to_list(S) ++ integer_to_list(Micro);
-value_to_string(V) when is_list(V) ->
-  V;
-value_to_string(_V) ->
-  [].
-
-has_value(length,{L,P}) ->
-  "(" ++ value_to_string(L) ++ "," ++ value_to_string(P) ++ ")";
-has_value(length,V) when V /= undefined ->
-  "(" ++ value_to_string(V) ++ ")";
-has_value(schema,V) when V /= undefined ->
-  value_to_string(V) ++ ".";
-has_value(odc,V) when V /= undefined ->
-  "ON DELETE " ++ proplists:get_value(cascade,options_map());
-has_value(null,V) when V =:= no orelse V =:= undefined ->
-  "NOT NULL";
-has_value(_,_) ->
-  [].
-
-%default_name({Key,T},N) when N =:= undefined->
-%  value_to_string(Key) ++ "_" ++ value_to_string(T) ++ "_" 
-%    ++ value_to_string(now());
-%default_name({_Key,_T},N) ->
-%  value_to_string(N).
-
-%add_constraint(S,N,Cs) when Cs /= undefined ->
-%  lists:foldl(fun(E,Acc) -> Acc ++ 
-%    "ALTER TABLE " ++ has_value(schema,S) ++ value_to_string(N) 
-%    ++ " ADD CONSTRAINT " ++ constraint_to_string(N,E)
-%  ++ "\n" end,[],Cs);
-%add_constraint(_S,_N,_C) ->
-%  [].
- 
-%constraint_to_string(T,#pk{id=N,fields=Fs} = _C) ->
-%  default_name({pk,T},N) ++ " PRIMARY KEY (" ++ field_to_string(Fs) ++ ");";
-%constraint_to_string(T,#unique{id=N,fields=Fs} = _C) ->
-%  default_name({uq,T},N) ++ " UNIQUE (" ++ field_to_string(Fs) ++ ");";
-%constraint_to_string(T,#fk{id=N,on_delete_cascade=Odc,fields=Fs,r_schema=Rs,r_table=Rt,r_fields=RFs} = _C) ->
-%  default_name({fk,T},N) ++ " FOREIGN KEY (" ++ field_to_string(Fs) 
-%  ++ ") REFERENCES " ++  has_value(schema,Rs) ++ value_to_string(Rt) ++ " (" ++ field_to_string(RFs) 
-%  ++ ") " ++ has_value(odc,Odc) ++ ";".
-%
-%options_to_string(K,Opts) when is_list(Opts) ->
-%  case lists:member(K,Opts) of true -> proplists:get_value(K,options_map()); _ -> [] end;
-%options_to_string(_K,_Opts) ->
-%  [].
-
-options_map() -> [
-    {nolock,"CONCURRENTLY"}
-    ,{cascade,"CASCADE"}
-    ,{ifexists,"IF EXISTS"}
-    ,{ifnotexists,"IF NOT EXISTS"}
-  ].
-
-
-  
 
