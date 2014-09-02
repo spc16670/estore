@@ -50,6 +50,9 @@
   ,sql_one_to_many/3
 
   ,save_model/1
+
+  ,select/2
+  ,run_select/2
 ]).
 
 -export([
@@ -79,8 +82,8 @@ save(Model) ->
 delete(_Name) ->
   ok.
 
-find(_Name,_Conditions) ->
-  ok.
+find(Name,Conditions) ->
+  select(Name,Conditions).
 
 init() ->
   drop_schema(?SCHEMA),
@@ -107,7 +110,7 @@ squery(PoolName,Sql) ->
 equery(Sql,Params) ->
   equery(?POOL,Sql,Params).
 equery(PoolName,Sql,Params) ->
-  ?LOG(debug,Sql),
+  ?LOG(debug,[Sql,Params]),
   poolboy:transaction(PoolName,fun(Worker) ->
     gen_server:call(Worker,{equery,Sql,Params})
   end).
@@ -296,7 +299,6 @@ sql_one_to_many(Table,Ref,_Constraints) ->
 
 save_model(Model) ->
   OrderedRecords = model_records(Model),
-  io:fwrite("~n~n ~p ~n~n",[OrderedRecords]),
   SqlPlan = sql_save_list(OrderedRecords),
   Plan = sql_plan(SqlPlan),
   execute_sql_plan(Plan).
@@ -309,9 +311,18 @@ model_records(Model) ->
   List = lists:reverse(relation_record(Model)),
   List ++ [{Model,[]}].
 
-relation_record(Model) ->
+relation_record(Model) when is_tuple(Model) ->
   Name = hd(tuple_to_list(Model)), 
   relation_records(Model,new_record(Name),fields(Name),[]).
+
+
+relation_record(Model,Rel) when is_tuple(Model) ->
+  [{relation_action,Rel}] ++ [{Model,relation_record(Model)}];
+relation_record(Models,Rel) when is_list(Models) ->
+  lists:foldl(fun(Record,Acc) -> 
+    Acc ++ [{relation_action,Rel}] ++ [{Record,relation_record(Record)}]
+  end,[],Models).
+  
 
 relation_records(Record,RecordDef,[F|Fs],Result) ->
   Name = hd(tuple_to_list(Record)), 
@@ -321,7 +332,7 @@ relation_records(Record,RecordDef,[F|Fs],Result) ->
       NewResult = Result ++ [{FieldVal,relation_record(FieldVal)}],
       relation_records(Record,RecordDef,Fs,NewResult);
     {one_to_many,Ref} ->
-      NewResult = Result ++ [{relation_action,{Name,Ref}}] ++ [{FieldVal,relation_record(FieldVal)}],
+      NewResult = Result ++ relation_record(FieldVal,{Name,Ref}),
       relation_records(Record,RecordDef,Fs,NewResult);
     _NoRelation -> 
       relation_records(Record,RecordDef,Fs,Result)
@@ -346,7 +357,7 @@ sql_save_list([],SqlPlan) ->
 
 %% @doc Turns a record into a {RecordAtom,{SqlString,ParamList}} tuple.
 
-sql_save_values(Record) ->
+sql_save_values(Record) when is_tuple(Record) ->
   case get_value(id,Record) of
     undefined -> 
       sql_insert_values(Record);
@@ -385,8 +396,8 @@ sql_insert_values(Record,RecordDef,[F|Fs],Insert,Value,Params,ParamCount) ->
   sql_insert_values(Record,RecordDef,Fs,Inserts,Values,NewParams,Count);
 sql_insert_values(Record,_RecordDef,[],Inserts,Values,Params,_ParamCount) -> 
   Name = hd(tuple_to_list(Record)),
-  {Name,{"INSERT INTO " ++ has_value(schema,?SCHEMA) ++ value_to_string(Name) ++ " ( " ++
-  strip_comma(Inserts) ++ " ) VALUES ( " ++ strip_comma(Values) ++ " ) RETURNING id;",Params}}. 
+  {Name,{"INSERT INTO " ++ table_name(Name) ++ " ( " ++ strip_comma(Inserts) ++
+   " ) VALUES ( " ++ strip_comma(Values) ++ " ) RETURNING id;",Params}}. 
 
 %% @doc UPDATE statements..
 
@@ -418,20 +429,23 @@ sql_plan([],Result) ->
 execute_sql_plan(SqlPlan) ->
   execute_sql_plan(SqlPlan,[]).
 
-%% Carry is empty for the relation_action so advance its position 
+%% @private Carry is empty for the relation_action so advance its position 
+%% There are some StmtTuples needing running first.
+
 execute_sql_plan([{relation_action,Relations}|StmtTuples],[]) ->
   Stmts = StmtTuples ++ [{relation_action,Relations}],
   execute_sql_plan(Stmts,[]);
 
-%% Carry is not empty so check if we have ids' for all Relations
-%% if not advance relation_action's position 
+%% @private Carry is not empty for relation action so check if we have ids' for 
+%% all Relations if not advance relation_action's position.
+
 execute_sql_plan([{relation_action,{Table,Ref}}|StmtTuples],Carry) ->
   TableId = estore_utils:get_value(Table,Carry,undefined), 
   RefId = estore_utils:get_value(Ref,Carry,undefined),
   if TableId /= undefined andalso RefId /= undefined ->
-    NewCarry = Carry -- [{Table,Ref}], 
+    NewCarry = Carry -- [{Ref,RefId}], 
     NewStmtTuples = StmtTuples,
-    Sql = "INSER INTO " ++ has_value(schema,?SCHEMA) 
+    Sql = "INSERT INTO " ++ has_value(schema,?SCHEMA) 
     ++ relation_table_name(Table,Ref) ++ " VALUES ($1, $2);",
     ?EQUERY(Sql,[TableId,RefId]); 
   true ->
@@ -463,6 +477,91 @@ get_parameters(Carry,{Head,[{ParamKey,_Pos}|ParamTuples]},ParamList) ->
   get_parameters(NewCarry,{Head,ParamTuples},Params);
 get_parameters(Carry,{_Head,[]},ParamList) ->
   {Carry,ParamList}.
+
+
+%% -----------------------------------------------------------------------------
+%% ----------------------------- SELECT ----------------------------------------
+%% -----------------------------------------------------------------------------
+
+select(ModelName,Where) ->
+  run_select(ModelName,Where).
+
+run_select(ModelName,Where) ->
+  {From,Record} = from(ModelName),
+  Sql = "SELECT * FROM " ++ From ++ " WHERE " ++ where(Where), 
+  Query = case ?SQUERY(Sql) of
+    {ok,ColList,[ValTuple]} ->
+      Vals = tuple_to_list(ValTuple),
+      Cols = [X || {_,X,_,_,_,_} <- ColList],
+      {ok,lists:zip(Cols,Vals)};
+    Error -> {error,Error}
+  end,
+  set_results(Query,Record).
+
+
+set_results({ok,Results},Record) ->
+  Name = hd(tuple_to_list(Record)), 
+  io:fwrite("~nResults ~p RECIRD ~p~n~n",[Results,Record]),
+  {_Res,Record} = set_results(fields(Name),Results,Record,new_record(Name)),
+  Record;
+set_results({error,Error},_Record) ->
+  Error.
+
+set_results([F|Fs],[{_Col,Val}|Results],Record,RecordDef) ->
+  io:fwrite("Setting ~p with ~p~n",[F,Val]),
+  case has_relation(RecordDef,F) of
+    {one_to_many,_Relation} ->
+      FVal = get_value(F,Record),
+      Name = hd(tuple_to_list(FVal)),
+      case is_tuple(FVal) of
+	true ->
+	  {Rec,Res} = set_results(fields(Name),Results,FVal,new_record(Name)),
+	  NewRec = set_value(F,Rec,Record), 
+	  set_results(Fs,Res,NewRec,RecordDef);
+	false ->
+          NewRec = set_value(F,undefined,Record), 
+          set_results(Fs,Results,NewRec,RecordDef)
+      end;
+    _ ->
+      NewRec = set_value(F,Val,Record), 
+      set_results(Fs,Results,NewRec,RecordDef)
+  end;
+set_results([],Res,Record,_RecordDef) ->
+  {Record,Res}.
+
+
+
+
+
+from(TableName) ->
+  from(new_record(TableName),fields(TableName),[]).
+
+from(RecordDef,[F|Fs],Sql) ->
+  case has_relation(RecordDef,F) of
+    {references,Relation} -> 
+      NewRec = set_value(F,new_model(Relation),RecordDef),
+      NewFrom = value_to_string(Relation) ++ ", ";
+    {one_to_many,Relation} ->  
+      NewRec = set_value(F,new_model(Relation),RecordDef),
+      NewFrom = value_to_string(Relation) ++ ", ";
+    _ ->
+      NewRec = set_value(F,undefined,RecordDef),
+      NewFrom = ""
+  end,
+  from(NewRec,Fs,Sql ++ NewFrom);
+from(RecordDef,[],Sql) ->
+  Name = hd(tuple_to_list(RecordDef)),
+  From = value_to_string(Name) ++ ", " ++ 
+  strip_comma(Sql),
+  {From,RecordDef}.
+
+where(WhereList) ->
+  Where = lists:foldl(fun({Field,Op,Cond},Acc) -> 
+    Acc ++ value_to_string(Field) ++  
+    value_to_string(Op) ++  
+    value_to_string(Cond) ++ ", " 
+  end,[],WhereList),
+  strip_comma(Where).
 
 %% -----------------------------------------------------------------------------
 %% --------------------------- CONVERTERS --------------------------------------
@@ -571,6 +670,9 @@ maybe_references(_Constraints,Ref) ->
 
 relation_table_name(Table,Ref) ->
   value_to_string(Table) ++ "_" ++ value_to_string(Ref).
+
+table_name(Name) ->
+  has_value(schema,?SCHEMA) ++ value_to_string(Name). 
 
 has_null(Constraints) ->
   case estore_utils:get_value(null,Constraints,false) of

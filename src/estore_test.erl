@@ -38,10 +38,9 @@ new(Module,Model) when Model =:= 'shopper' ->
   AddressType = AddressTypeRecord#'address_type'{'type' = "Residential"},
   AddressRecord = estore:new(Module,'address'),
 
-
   Phone = PhoneRecord#'phone'{'number' = "07871259234", 'type' = PhoneType},
 
-  Address = AddressRecord#'address'{
+  Address1 = AddressRecord#'address'{
     'line1' = "Flat 1/2"
     ,'line2' = "56 Cecil St"
     ,'line3' = null
@@ -50,6 +49,16 @@ new(Module,Model) when Model =:= 'shopper' ->
     ,'country' = "Scotland"
     ,'type' = AddressType
   },
+  Address2 = AddressRecord#'address'{
+    'line1' = "Flat 2/3"
+    ,'line2' = "7 Ravel Row"
+    ,'line3' = null
+    ,'postcode' = "G315EW"
+    ,'city' = "Glasgow"
+    ,'country' = "Scotland"
+    ,'type' = AddressType
+  },
+
   Record = estore:new(Module,Model),
   Record#'shopper'{
     'fname' = "Szymon"
@@ -57,7 +66,7 @@ new(Module,Model) when Model =:= 'shopper' ->
     ,'lname' = "Czaja"
     ,'dob' = "1987-03-01"
     ,'phone' = Phone
-    ,'address' = Address
+    ,'address' = [Address1,Address2]
   };
 new(Module,Model) when Model =:= 'user' ->
   estore:new(Module,Model).
