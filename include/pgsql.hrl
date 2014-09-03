@@ -81,7 +81,7 @@
     {constraints,[
     %% one_to_many creates a lookup table
       {one_to_many,phone}
-      ,{null,true}
+%      ,{null,true}
       %%,{on_delete,cascade}
     ]}
   ]
@@ -89,7 +89,7 @@
     {constraints,[
       %% one_to_many creates a lookup table
       {one_to_many,address}
-      ,{null,true}
+%      ,{null,true}
       %%,{on_delete,cascade}
     ]}
   ]
