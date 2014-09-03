@@ -52,7 +52,7 @@
   ,save_model/1
 
   ,select/2
-  ,run_select/2
+  ,sql_select/1
 ]).
 
 -export([
@@ -299,8 +299,8 @@ sql_one_to_many(Table,Ref,_Constraints) ->
 
 save_model(Model) ->
   OrderedRecords = model_records(Model),
-  SqlPlan = sql_save_list(OrderedRecords),
-  Plan = sql_plan(SqlPlan),
+  Sql = sql_tuples('insert',OrderedRecords),
+  Plan = sql_plan(Sql),
   execute_sql_plan(Plan).
 
 %% @doc Creates a list of records to be transformed into SQL statements.
@@ -340,40 +340,47 @@ relation_records(Record,RecordDef,[F|Fs],Result) ->
 relation_records(_Record,_RecordDef,[],Result) ->
   Result.
 
-%% @doc Turns records from the list into SQL statements preserving the order.
-
-sql_save_list(Records) ->
-  sql_save_list(Records,[]).
-
-sql_save_list([Record|Records],SqlPlan) ->
-  Plan = case Record of 
-    {relation_action,Opts} -> [{relation_action,Opts}];
-    {Tuple,[]} -> [{sql_save_values(Tuple),[]}];
-    {Tuple,List} -> [{sql_save_values(Tuple),sql_save_list(List)}]
-  end,
-  sql_save_list(Records,SqlPlan ++ Plan);
-sql_save_list([],SqlPlan) ->
-  SqlPlan.
-
 %% @doc Turns a record into a {RecordAtom,{SqlString,ParamList}} tuple.
 
-sql_save_values(Record) when is_tuple(Record) ->
-  case get_value(id,Record) of
-    undefined -> 
-      sql_insert_values(Record);
-    _Id ->
-      sql_update_values(Record)
-  end.
+sql_tuples('insert',Record) when is_tuple(Record) ->
+  sql_insert(Record);
+sql_tuples('update',Record) when is_tuple(Record) ->
+  sql_update(Record);
+sql_tuples('select',Record) when is_tuple(Record) ->
+  sql_select(Record);
+sql_tuples(DmlType,Records) when is_list(Records) ->
+  sql_tuples(DmlType,Records,[]).
+
+sql_tuples(DmlType,[Record|Records],SqlPlan) ->
+  Plan = case Record of 
+    {relation_action,Opts} -> [{relation_action,Opts}];
+    {Tuple,[]} -> [{sql_tuples(DmlType,Tuple),[]}];
+    {Tuple,List} -> [{sql_tuples(DmlType,Tuple),sql_tuples(DmlType,List)}]
+  end,
+  sql_tuples(DmlType,Records,SqlPlan ++ Plan);
+sql_tuples(_DmlType,[],SqlPlan) ->
+  SqlPlan.
+
+sql_plan(SqlPlan) ->
+  sql_plan(SqlPlan,[]).
+sql_plan([{relation_action,Opts}|Sqls],Result) ->
+  sql_plan(Sqls,Result ++ [{relation_action,Opts}]);
+sql_plan([{{Name,Sql},[]}|Sqls],Result) ->
+  sql_plan(Sqls,Result ++ [{Name,Sql}]);
+sql_plan([{{Name,Sql},List}|Sqls],Result) ->
+  sql_plan(Sqls,Result ++ sql_plan(List) ++ [{Name,Sql}]);
+sql_plan([],Result) ->  
+  Result.
 
 %% @private INSERT ignores record ids.
 
-sql_insert_values(Record) ->
+sql_insert(Record) ->
   Name = hd(tuple_to_list(Record)),
-  sql_insert_values(Record,new_record(Name),fields(Name),[],[],[],1).
+  sql_insert(Record,new_record(Name),fields(Name),[],[],[],1).
 
-sql_insert_values(Record,RecordDef,[id|Fs],Insert,Value,Params,ParamCount) ->
-  sql_insert_values(Record,RecordDef,Fs,Insert,Value,Params,ParamCount);
-sql_insert_values(Record,RecordDef,[F|Fs],Insert,Value,Params,ParamCount) ->
+sql_insert(Record,RecordDef,[id|Fs],Insert,Value,Params,ParamCount) ->
+  sql_insert(Record,RecordDef,Fs,Insert,Value,Params,ParamCount);
+sql_insert(Record,RecordDef,[F|Fs],Insert,Value,Params,ParamCount) ->
   Type = estore_utils:get_value(type,get_value(F,RecordDef),undefined),
   case has_relation(RecordDef,F) of
     {references,Relation} -> 
@@ -393,15 +400,15 @@ sql_insert_values(Record,RecordDef,[F|Fs],Insert,Value,Params,ParamCount) ->
       NewParams = Params
   end,
   Values = Value ++ Formatted,
-  sql_insert_values(Record,RecordDef,Fs,Inserts,Values,NewParams,Count);
-sql_insert_values(Record,_RecordDef,[],Inserts,Values,Params,_ParamCount) -> 
+  sql_insert(Record,RecordDef,Fs,Inserts,Values,NewParams,Count);
+sql_insert(Record,_RecordDef,[],Inserts,Values,Params,_ParamCount) -> 
   Name = hd(tuple_to_list(Record)),
   {Name,{"INSERT INTO " ++ table_name(Name) ++ " ( " ++ strip_comma(Inserts) ++
    " ) VALUES ( " ++ strip_comma(Values) ++ " ) RETURNING id;",Params}}. 
 
 %% @doc UPDATE statements..
 
-sql_update_values(_Record) ->
+sql_update(_Record) ->
   ok.
 
 format_to_sql(_Type,'undefined') ->
@@ -414,17 +421,6 @@ format_to_sql('integer',Value) ->
   value_to_string(Value);
 format_to_sql(_Quoted,Value) ->
   "'" ++ value_to_string(Value) ++ "'".
-
-sql_plan(SqlPlan) ->
-  sql_plan(SqlPlan,[]).
-sql_plan([{relation_action,Opts}|Sqls],Result) ->
-  sql_plan(Sqls,Result ++ [{relation_action,Opts}]);
-sql_plan([{{Name,Sql},[]}|Sqls],Result) ->
-  sql_plan(Sqls,Result ++ [{Name,Sql}]);
-sql_plan([{{Name,Sql},List}|Sqls],Result) ->
-  sql_plan(Sqls,Result ++ sql_plan(List) ++ [{Name,Sql}]);
-sql_plan([],Result) ->  
-  Result.
 
 execute_sql_plan(SqlPlan) ->
   execute_sql_plan(SqlPlan,[]).
@@ -483,11 +479,15 @@ get_parameters(Carry,{_Head,[]},ParamList) ->
 %% ----------------------------- SELECT ----------------------------------------
 %% -----------------------------------------------------------------------------
 
-select(ModelName,Where) ->
-  run_select(ModelName,Where).
+select(Name,_Where) ->
+  Model = new_model(Name),
+  OrderedRecords = model_records(Model),
+  Sql = sql_tuples('select',OrderedRecords),
+  sql_plan(Sql).
 
-run_select(Name,Where) ->
-  "SELECT * FROM " ++ table_name(Name) ++ " WHERE " ++ where(Where).
+sql_select(Record) ->
+  Name = hd(tuple_to_list(Record)),
+  "SELECT * FROM " ++ table_name(Name) ++ " WHERE " ++ where([{'a','>','b'}]).
 
 %run_select(ModelName,Where) ->
 %  {From,Record} = from(ModelName),
