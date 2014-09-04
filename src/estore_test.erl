@@ -31,14 +31,15 @@ new(Model) ->
   new(estore_pgsql,Model).
 new(Module,Model) when Model =:= 'shopper' ->
   PhoneTypeRecord = estore:new(Module,'phone_type'),
-  PhoneType = PhoneTypeRecord#'phone_type'{'type' = "Mobile"},
+  MobilePhoneType = PhoneTypeRecord#'phone_type'{'type' = "Mobile"},
+  HomePhoneType = PhoneTypeRecord#'phone_type'{'type' = "Home"},
   PhoneRecord = estore:new(Module,'phone'),
 
   AddressTypeRecord = estore:new(Module,'address_type'),
-  AddressType = AddressTypeRecord#'address_type'{'type' = "Residential"},
   AddressRecord = estore:new(Module,'address'),
 
-  Phone = PhoneRecord#'phone'{'number' = "07871259234", 'type' = PhoneType},
+  Phone1 = PhoneRecord#'phone'{'number' = "07871259234", 'type' = MobilePhoneType},
+  Phone2 = PhoneRecord#'phone'{'number' = "01413872123", 'type' = HomePhoneType},
 
   Address1 = AddressRecord#'address'{
     'line1' = "Flat 1/2"
@@ -47,7 +48,7 @@ new(Module,Model) when Model =:= 'shopper' ->
     ,'postcode' = "G128RJ"
     ,'city' = "Glasgow"
     ,'country' = "Scotland"
-    ,'type' = AddressType
+    ,'type' =  AddressTypeRecord#'address_type'{'type' = "Residential"}
   },
   Address2 = AddressRecord#'address'{
     'line1' = "Flat 2/3"
@@ -56,7 +57,7 @@ new(Module,Model) when Model =:= 'shopper' ->
     ,'postcode' = "G315EW"
     ,'city' = "Glasgow"
     ,'country' = "Scotland"
-    ,'type' = AddressType
+    ,'type' =  AddressTypeRecord#'address_type'{'type' = "Shipping"}
   },
 
   Record = estore:new(Module,Model),
@@ -65,7 +66,7 @@ new(Module,Model) when Model =:= 'shopper' ->
     ,'mname' = "Piotr"
     ,'lname' = "Czaja"
     ,'dob' = "1987-03-01"
-    ,'phone' = Phone
+    ,'phone' = [Phone1,Phone2]
     ,'address' = [Address1,Address2]
   };
 new(Module,Model) when Model =:= 'user' ->
