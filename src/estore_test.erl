@@ -60,15 +60,38 @@ new(Module,Model) when Model =:= 'shopper' ->
     ,'type' =  AddressTypeRecord#'address_type'{'type' = "Shipping"}
   },
 
-  Record = estore:new(Module,Model),
-  Record#'shopper'{
+  Record1 = estore:new(Module,Model),
+
+  NewRecord1 = Record1#'shopper'{
     'fname' = "Szymon"
     ,'mname' = "Piotr"
     ,'lname' = "Czaja"
     ,'dob' = "1987-03-01"
     ,'phone' = [Phone1,Phone2]
     ,'address' = [Address1,Address2]
-  };
+  },
+
+  Phone3 = PhoneRecord#'phone'{'number' = "07871592345", 'type' = MobilePhoneType},
+  Address3 = AddressRecord#'address'{
+    'line1' = "Flat 1/2"
+    ,'line2' = "85 Dumbarton Rd"
+    ,'line3' = null
+    ,'postcode' = "G115EQ"
+    ,'city' = "Glasgow"
+    ,'country' = "Scotland"
+    ,'type' =  AddressTypeRecord#'address_type'{'type' = "Residential"}
+  },
+
+  Record2 = estore:new(Module,Model),
+  NewRecord2 = Record2#'shopper'{
+    'fname' = "Raman"
+    ,'mname' = null
+    ,'lname' = "Jassal"
+    ,'dob' = "1986-01-01"
+    ,'phone' = [Phone3]
+    ,'address' = [Address3]
+  },
+  [NewRecord1,NewRecord2];
 new(Module,Model) when Model =:= 'user' ->
   estore:new(Module,Model).
 
