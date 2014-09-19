@@ -489,7 +489,8 @@ run_select(Name,Where) ->
   Sql = "SELECT * FROM " ++ From ++ " WHERE " ++ where(Where), 
   Query = case ?SQUERY(Sql) of
     {ok,ColList,ValTuples} ->
-
+      Split = split_by_id(ValTuples),
+      io:fwrite("~p~n",[Split]),
 %      Vals = tuple_to_list(ValTuple),
 %      Cols = [X || {_,X,_,_,_,_} <- ColList],
 %      {ok,lists:zip(Cols,Vals)};
@@ -499,13 +500,40 @@ run_select(Name,Where) ->
   end.
 %  set_results(Query,Record).
 
-set_results(Name,Model,Cols,Rows) ->
+
+split_by_id(QueryResult) ->
+  Sorted = lists:sort(fun(TupleA,TupleB) -> 
+    IdA = hd(tuple_to_list(TupleA)),
+    IdB = hd(tuple_to_list(TupleB)),
+    if IdA =< IdB -> true; true -> false end
+  end,QueryResults),
+  split_by_id(Sorted,[]).
+
+split_by_id([],Result) ->
+  Result;
+split_by_id([Tuple|Tuples],Result) when Result =:= [] ->
+  split_by_id(Tuples,Result ++ [[Tuple]]);
+split_by_id([Tuple|Tuples],Results) ->
+  Id = hd(tuple_to_list(Tuple)),
+  LastList = lists:last(Results),
+  LastId = hd(tuple_to_list(lists:last(LastList))),
+  LastResult = Results -- [LastList],
+  if Id =:= LastId ->
+    NewResult = LastResult ++ [LastList ++ [Tuple]],
+    split_by_id(Tuples,NewResult);
+  true -> 
+    NewResult = Results ++ [[Tuple]],
+    split_by_id(Tuples,NewResult)
+  end.
   
 
-  set_results(Name,Record,Cols,Rows);
-set_results(Name,Record.,[],Rows) ->
-  Record.
-
+%set_results(Name,Model,Cols,Rows) ->
+%  
+%
+%  set_results(Name,Record,Cols,Rows);
+%set_results(Name,Record.,[],Rows) ->
+%  Record.
+%
 %set_results({ok,Results},Record) ->
 %  Name = hd(tuple_to_list(Record)), 
 %  {_Res,Record} = set_results(fields(Name),Results,Record,new_record(Name)),
