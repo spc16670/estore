@@ -7,6 +7,10 @@
   ,get_config/1
   ,get_value/3
   ,remove_dups/1
+  ,format_time/2
+  ,format_date/2
+  ,format_datetime/2
+  ,format_iso8601/0
 ]).
 
 -include("estore.hrl").
@@ -35,3 +39,21 @@ remove_dups([]) ->
   [];
 remove_dups([H|T]) -> 
   [H | [X || X <- remove_dups(T), X /= H]].
+
+
+format_time({Hour,Min,Sec},'iso8601') ->
+  io_lib:format("~2.10.0B:~2.10.0B:~2.10.0B",[Hour, Min, Sec]).
+
+format_date({Year,Month,Day},'iso8601') ->
+  io_lib:format("~4.10.0B-~2.10.0B-~2.10.0B",[Year, Month, Day]).
+
+format_datetime({{Year,Month,Day},{Hour,Min,Sec}},'iso8601') ->
+  Date = io:fwrite("~s\n",[io_lib:format("~4.10.0B-~2.10.0B-~2.10.0B ~2.10.0B:~2.10.0B:~2.10.0B",
+  [Year, Month, Day, Hour, Min, Sec])]),
+  Date.
+ 
+format_iso8601() ->
+  {{Year, Month, Day}, {Hour, Min, Sec}} = calendar:universal_time(),
+  iolist_to_binary(io_lib:format(
+    "~.4.0w-~.2.0w-~.2.0wT~.2.0w:~.2.0w:~.2.0wZ",
+    [Year, Month, Day, Hour, Min, Sec] )).

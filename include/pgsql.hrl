@@ -1,3 +1,42 @@
+-record(user,{
+  id = [ 
+    {type,{bigserial,[]}}
+  ]
+  ,email = [
+    {type,{varchar,[{length,50}]}}
+    ,{constraints,[{null,false}]}
+  ]
+  ,password = [
+    {type,{varchar,[{length,50}]}}
+    ,{constraints,[{null,false}]}
+  ]
+}).
+
+-record(shopper,{
+  id = [ 
+    {type,{bigserial,[]}}
+  ]
+  ,fname = [
+    {type,{varchar,[{length,50}]}}
+  ]
+  ,mname = [
+    {type,{varchar,[{length,50}]}}
+  ]
+  ,lname = [
+    {type,{varchar,[{length,50}]}}
+  ]
+  ,dob = [
+    {type,{date,[{format,[iso8601]}]}}
+  ]
+  ,user_id = [
+    {type,{bigint,[]}}
+    ,{constraints,[
+      {references,user}
+      ,{null,true}
+    ]}
+  ]
+}).
+
 -record(address_type,{
   id = [ 
     {type,{bigserial,[]}}
@@ -6,7 +45,7 @@
     {type,{varchar,[{length,50}]}}
   ]  
 }).
- 
+
 -record(address,{
   id = [ 
     {type,{bigserial,[]}}
@@ -30,9 +69,17 @@
     {type,{varchar,[{length,50}]}}
   ]
   ,type = [
-    {constraints,[
+    {type,{integer,[]}}
+    ,{constraints,[
       {references,address_type}
       ,{null,false}
+    ]}
+  ]
+  ,shopper_id = [
+    {type,{bigint,[]}}
+    ,{constraints,[
+      {references,shopper}
+      ,{null,true}
     ]}
   ]
 }).
@@ -54,67 +101,17 @@
     {type,{varchar,[{length,50}]}}
   ]
   ,type = [
-    {constraints,[
+    {type,{integer,[]}}
+    ,{constraints,[
       {references,phone_type}
       ,{null,false}
     ]}
-  ] 
-}).
-
--record(shopper,{
-  id = [ 
-    {type,{bigserial,[]}}
   ]
-  ,fname = [
-    {type,{varchar,[{length,50}]}}
-  ]
-  ,mname = [
-    {type,{varchar,[{length,50}]}}
-  ]
-  ,lname = [
-    {type,{varchar,[{length,50}]}}
-  ]
-  ,dob = [
-    {type,{date,[{format,[]}]}}
-  ]
-  ,phone = [
-    {constraints,[
-    %% one_to_many creates a lookup table
-      {one_to_many,phone}
-%      ,{null,true}
-      %%,{on_delete,cascade}
-    ]}
-  ]
-  ,address = [
-    {constraints,[
-      %% one_to_many creates a lookup table
-      {one_to_many,address}
-%      ,{null,true}
-      %%,{on_delete,cascade}
-    ]}
-  ]
-}).
-
--record(user,{
-  id = [ 
-    {type,{bigserial,[]}}
-  ]
-  ,email = [
-    {type,{varchar,[{length,50}]}}
-    ,{constraints,[{null,false}]}
-  ]
-  ,password = [
-    {type,{varchar,[{length,50}]}}
-    ,{constraints,[{null,false}]}
-  ]
-  ,shopper = [
-    {type,{'bigint',[]}}
+  ,shopper_id = [
+    {type,{bigint,[]}}
     ,{constraints,[
-      %% references references the id of the other model
       {references,shopper}
-      ,{null,true} 
-      %%,{on_delete,cascade}
-      %%,{on_update,cascade}
+      ,{null,true}
     ]}
   ]
 }).
