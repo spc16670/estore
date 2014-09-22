@@ -12,9 +12,13 @@
 -callback save(Adapter :: atom(),Record :: record()) -> 
   'ok'|tuple('error', Reason :: string()).
 
--callback delete(Adapter :: atom(),Record :: record()) -> 
+-callback delete(Adapter :: atom(),Record :: record(),Conditions :: list()) -> 
   'ok'|tuple('error', Reason :: string()).
 
 -callback find(Adapter :: atom(),Name :: atom(),Conditions :: list()) -> 
+  Records :: list() | tuple('error', Reason :: string()).
+
+-callback find(Adapter :: atom(),Name :: atom(),Where :: list(), 
+    OrderBy :: list(), Limit :: integer(), Offset :: integer()) -> 
   Records :: list() | tuple('error', Reason :: string()).
 

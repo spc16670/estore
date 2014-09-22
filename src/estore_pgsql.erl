@@ -1,10 +1,9 @@
 -module(estore_pgsql).
 
 -export([
-  create_index/3
-  ,create_index/4
-  ,select_index/1
-  ,select_index/2
+  create_index/2
+  ,drop_index/1
+  ,drop_index/2
   ,transaction/1
   ,rollback/0
   ,drop_table/1
@@ -16,8 +15,9 @@
   ,new/1
   ,models/0
   ,save/1
-  ,delete/1
+  ,delete/2
   ,find/2
+  ,find/5
 ]).
 
 -export([
@@ -48,6 +48,7 @@
   ,drop_tables/0
 
   ,select/2
+  ,select/5
 ]).
 
 -export([
@@ -74,16 +75,24 @@ new(Name) ->
 save(Model) ->  
   save_record(Model).
 
-delete(_Name) ->
-  ok.
+delete(Name,Conditions) ->
+  ?SQUERY(delete_sql(Name,Conditions)).
 
-find(Name,Conditions) ->
+find(Name,Id) when is_integer(Id) -> 
+  select(Name,Id);
+find(Name,Conditions) when is_list(Conditions) ->
   select(Name,Conditions).
+
+find(Name,Where,OrderBy,Limit,Offset) ->
+  select(Name,Where,OrderBy,Limit,Offset).
 
 init() ->
   drop_schema(?SCHEMA),
   create_schema(?SCHEMA),
-  create_tables(models()).
+  create_tables(models()),
+  create_index(shopper,[lname,dob]),
+  create_index(address,postcode),
+  create_index(user,[email,password]).
 
 models() ->
   lists:foldl(fun(E,Acc) ->
@@ -248,7 +257,7 @@ drop_table(Table) ->
   drop_table(Table,[{ifexists,true},{cascade,true}]).
 drop_table(Table,Op) ->
   "DROP TABLE " ++ options_to_string({options,ifexists},Op) ++ " " 
-  ++ table_name(Table) ++ " "  ++ options_to_string({options,cascade},Op) ++ ";".
+  ++ table_name(Table) ++ " " ++ options_to_string({options,cascade},Op) ++ ";".
 
 %% -----------------------------------------------------------------------------
 %% -------------------------- RELATIONS ----------------------------------------
@@ -323,24 +332,55 @@ sql_update(Record,_RecordDef,[],Updates) ->
 %% ----------------------------- SELECT ----------------------------------------
 %% -----------------------------------------------------------------------------
 
-select(Name,Where) ->
-  Sql = select_sql(Name,Where),
+select(Name,Id) when is_integer(Id) ->
+  select(Name,[{'id','=',Id}],[],50,0);
+select(Name,Where) when is_list(Where) ->
+  select(Name,Where,[],50,0).
+
+select(Name,Where,OrderBy,Limit,Offset) ->
+  Sql = select_sql(Name,Where,OrderBy,Limit,Offset),
   case ?SQUERY(Sql) of
     {ok,Cols,Vals} ->
       select_to_record(Name,Cols,Vals);
     Error -> {error,Error}
   end.
 
-select_sql(Name,Where) ->
-  "SELECT * FROM " ++ table_name(Name) ++ " WHERE " ++ where(Where).
+select_sql(Name,Where,OrderBy,Limit,Offset) ->
+  "SELECT * FROM " ++ table_name(Name) ++ where(Name,Where) ++ order_by(OrderBy)
+  ++ case Limit of all -> ""; _ -> " LIMIT " ++ value_to_string(Limit) end 
+  ++ case Offset of 0 -> ""; _ -> " OFFSET " ++ value_to_string(Offset) end.
 
-where(WhereList) ->
-  Where = lists:foldl(fun({Field,Op,Cond},Acc) -> 
-    Acc ++ value_to_string(Field) ++ " " ++  
-    value_to_string(Op) ++ " " ++  
-    value_to_string(Cond) ++ ", " 
+order_by([]) ->
+  [];
+order_by(OrdersBy) ->
+  OrderLst = lists:foldl(fun({Field,Sort},Acc) ->
+    Acc ++ value_to_string(Field) ++ " " ++
+    value_to_string(Sort) ++ ", "
+  end,[],OrdersBy),
+  " ORDER BY " ++ strip_comma(OrderLst).
+
+where(_Name,[]) ->
+  [];
+where(Name,WhereList) ->
+  Where = lists:foldl(fun(Cond,Acc) -> 
+    Acc ++ case Cond of
+      {Field,Op,Val} when is_atom(Field)->
+        RecordDef = new_record(Name),
+        Type = estore_utils:get_value('type',get_value(Field,RecordDef),undefined),
+        value_to_string(Field) ++ " " ++  
+        value_to_string(Op) ++ " " ++  
+        format_to_sql(Type,Val);
+      AndEtc when is_atom(AndEtc) ->
+        value_to_string(AndEtc);
+      {{Y,M,D},undefined} ->
+        format_to_sql({'date',[]},{Y,M,D});
+      {undefined,{H,M,S}} ->
+        format_to_sql({'time',[]},{H,M,S});
+      {{Y,Mt,D},{H,M,S}} ->
+        format_to_sql({'timestamp',[]},{{Y,Mt,D},{H,M,S}})
+      end ++ " "
   end,[],WhereList),
-  strip_comma(Where).
+  " WHERE " ++ strip_comma(Where).
 
 select_to_record(Name,Cols,Vals) when is_list(Vals) ->
   lists:foldl(fun(Tuple,Acc) -> Acc ++ select_to_record(Name,Cols,Tuple) end,[],Vals);  
@@ -352,32 +392,100 @@ select_to_record(Name,Cols,Tuple) when is_tuple(Tuple) ->
   results_to_record(new_model(Name),new_record(Name),fields(Name),PropList).
 
 results_to_record(Record,RecordDef,[Field|Fields],PropList) ->
-  FieldBin = atom_to_binary(Field,utf8),
+  FieldBin = atom_to_binary(Field,'utf8'),
   BinVal = estore_utils:get_value(FieldBin,PropList,undefined),
-  Type = estore_utils:get_value(type,get_value(Field,RecordDef),undefined),
+  Type = estore_utils:get_value('type',get_value(Field,RecordDef),undefined),
   Val = convert_to_result(Type,BinVal),
   NewRecord = set_value(Field,Val,Record),
   results_to_record(NewRecord,RecordDef,Fields,PropList);
 results_to_record(Record,_RecordDef,[],_PropList) ->
   Record.
 
+
+%% -----------------------------------------------------------------------------
+%% ------------------------------ DELETE ---------------------------------------
+%% -----------------------------------------------------------------------------
+
+delete_sql(Name,Id) when is_integer(Id) ->
+  delete_sql(Name,[{'id','=',Id}]);
+
+delete_sql(Name,Where) when is_list(Where) ->
+  "DELETE FROM " ++ table_name(Name) ++ where(Name,Where).
+
+%% -----------------------------------------------------------------------------
+%% ------------------------------ INDEXES --------------------------------------
+%% -----------------------------------------------------------------------------
+ 
+create_index(Table,Field) when is_atom(Field) ->
+  Name = index_name(Table,Field),
+  case ?SQUERY(create_index_sql(Table,Field)) of
+    {ok,_,_} -> {ok,Name};
+    Error -> {error,Error}
+  end;
+create_index(Table,Fields) when is_list(Fields) ->
+  lists:foldl(fun(Field,Acc) -> 
+    Acc ++ [create_index(Table,Field)] end
+  ,[],Fields). 
+
+create_index_sql(Table,Column) ->
+  Name = index_name(Table,Column),
+  "DO $$ BEGIN IF NOT EXISTS ( 
+    SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE  c.relname = '" ++ Name ++ "'
+    AND    n.nspname = '" ++ value_to_string(?SCHEMA) ++ "') THEN
+    CREATE INDEX " ++ Name ++ " ON " ++ table_name(Table) 
+    ++ " (" ++ value_to_string(Column) ++ ");"
+  "END IF;" 
+  "END$$;".
+
+drop_index(Table,Column) ->
+  drop_index(index_name(Table,Column)).
+
+drop_index(Name) ->
+  case ?SQUERY(drop_index_sql(Name)) of
+    {ok,_,_} -> {ok,Name};
+    Error -> {error,Error}
+  end.
+
+index_name(Table,Column) ->
+  "ix_" ++ value_to_string(Table) ++ "_" ++ value_to_string(Column).
+
+drop_index_sql(Name) ->
+  "DROP INDEX " ++ table_name(Name) ++ ";".
+
+transaction(Stmt) ->
+  "BEGIN;\n " ++ Stmt ++ "COMMIT;\n".
+
+rollback() ->
+  "ROLLBACK;".
+
+
+%% ------------------------------------------------------------------------------
+
+
 %% -----------------------------------------------------------------------------
 %% --------------------------- CONVERTERS --------------------------------------
 %% -----------------------------------------------------------------------------
 
-convert_to_result(_Type,null) ->
-  null;
-convert_to_result({integer,_Opts},Val) ->
+convert_to_result(_Type,'null') ->
+  'null';
+convert_to_result({'integer',_Opts},Val) ->
   binary_to_integer(Val);
-convert_to_result({bigserial,_Opts},Val) ->
+convert_to_result({'bigserial',_Opts},Val) ->
   binary_to_integer(Val);
-convert_to_result({bigint,_Opts},Val) ->
+convert_to_result({'bigint',_Opts},Val) ->
   binary_to_integer(Val);
-convert_to_result({serial,_Opts},Val) ->
+convert_to_result({'serial',_Opts},Val) ->
   binary_to_integer(Val);
-convert_to_result({varchar,_Opts},Val) ->
+convert_to_result({'varchar',_Opts},Val) ->
   binary_to_list(Val);
-convert_to_result({null,_Opts},_Val) ->
+convert_to_result({'date',_Opts},Val) ->
+  estore_utils:date_to_erlang(Val,'iso8601');
+convert_to_result({'time',_Opts},Val) ->
+  estore_utils:time_to_erlang(Val,'iso8601');
+convert_to_result({'timestamp',_Opts},Val) ->
+  estore_utils:datetime_to_erlang(Val,'iso8601');
+convert_to_result({'null',_Opts},_Val) ->
   undefined;
 convert_to_result(_Type,Val) ->
   Val.
@@ -392,6 +500,12 @@ format_to_sql({'bigint',_Opts},Value) ->
   value_to_string(Value);
 format_to_sql({'integer',_Opts},Value) ->
   value_to_string(Value);
+format_to_sql({'time',_Opts},Value) ->
+  "'" ++ estore_utils:format_time(Value,'iso8601') ++ "'";
+format_to_sql({'date',_Opts},Value) ->
+  "'" ++ estore_utils:format_date(Value,'iso8601') ++ "'";
+format_to_sql({'timestamp',_Opts},Value) ->
+  "'" ++ estore_utils:format_datetime(Value,'iso8601') ++ "'";
 format_to_sql(_Quoted,Value) ->
   "'" ++ value_to_string(Value) ++ "'".
 
@@ -499,40 +613,11 @@ maybe_references(_Constraints,Ref) ->
 %relation_table_name(Table,Ref) ->
 %  value_to_string(Table) ++ "_" ++ value_to_string(Ref).
 
+
 table_name(Name) ->
   has_value(schema,?SCHEMA) ++ value_to_string(Name). 
 
 strip_comma(String) ->
   string:strip(string:strip(String,both,$ ),both,$,).
-
-%% -----------------------------------------------------------------------------
- 
-create_index(N,T,Cs) when is_atom(T) ->
-  create_index(N,T,Cs,undefined).
-create_index(N,T,Cs,Ops) when is_atom(T) ->
-  create_index(N,{undefined,T},Cs,Ops);
-create_index(N,{S,T},_Cs,Ops) ->
-  "CREATE INDEX " ++ options_to_string(nolock,Ops) ++ " " ++ value_to_string(N) 
-  ++ " ON " ++ has_value(schema,S) ++ value_to_string(T) 
-  ++ " (" ++ "Fields here - cs" ++ ");".
-
-select_index(I) ->
-  select_index(undefined,I).
-select_index(_S,_I) ->
-  "SELECT n.nspname, i.relname FROM pg_class t, pg_class i, pg_index ix, pg_attribute a, pg_namespace n 
-  WHERE t.oid = ix.relname 
-  AND t.relnamespace = n.oid
-  AND i.oid = ix.indexrelid
-  AND n.nspname LIKE lamazone%
-  AND t.relanme LIKE lamazone%".
-
-transaction(Stmt) ->
-  "BEGIN;\n " ++ Stmt ++ "COMMIT;\n".
-
-rollback() ->
-  "ROLLBACK;".
-
-
-%% ------------------------------------------------------------------------------
 
 

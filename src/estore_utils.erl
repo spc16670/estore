@@ -10,7 +10,9 @@
   ,format_time/2
   ,format_date/2
   ,format_datetime/2
-  ,format_iso8601/0
+  ,date_to_erlang/2
+  ,time_to_erlang/2
+  ,datetime_to_erlang/2
 ]).
 
 -include("estore.hrl").
@@ -41,19 +43,28 @@ remove_dups([H|T]) ->
   [H | [X || X <- remove_dups(T), X /= H]].
 
 
-format_time({Hour,Min,Sec},'iso8601') ->
-  io_lib:format("~2.10.0B:~2.10.0B:~2.10.0B",[Hour, Min, Sec]).
+format_time({_,{Hour,Min,Sec}},'iso8601') ->
+  lists:flatten(io_lib:format("~2..0B:~2..0B:~2..0B", [Hour,Min,Sec])).
 
-format_date({Year,Month,Day},'iso8601') ->
-  io_lib:format("~4.10.0B-~2.10.0B-~2.10.0B",[Year, Month, Day]).
+format_date({{Year,Month,Day},_},'iso8601') ->
+  lists:flatten(io_lib:format("~4..0B-~2..0B-~2..0B", [Year,Month,Day])).
 
-format_datetime({{Year,Month,Day},{Hour,Min,Sec}},'iso8601') ->
-  Date = io:fwrite("~s\n",[io_lib:format("~4.10.0B-~2.10.0B-~2.10.0B ~2.10.0B:~2.10.0B:~2.10.0B",
-  [Year, Month, Day, Hour, Min, Sec])]),
-  Date.
+format_datetime(DateTime,Format) ->
+  Date = format_date(DateTime,Format),
+  Time = format_time(DateTime,Format),
+  Date ++ " " ++ Time.
+
+date_to_erlang(Date,'iso8601') ->
+  [Y,M,D] = re:split(Date,"-",[{return,list}]),
+  {list_to_integer(Y),list_to_integer(M),list_to_integer(D)}.
+   
+time_to_erlang(Time,'iso8601') ->
+  [H,M,S] = re:split(Time,":",[{return,list}]),
+  {list_to_integer(H),list_to_integer(M),list_to_integer(S)}.
+
+datetime_to_erlang(DateTimeBin,Format) ->
+  [Date,Time] = re:split(DateTimeBin," ",[{return,list}]),
+  {date_to_erlang(Date,Format),time_to_erlang(Time,Format)}. 
+
+
  
-format_iso8601() ->
-  {{Year, Month, Day}, {Hour, Min, Sec}} = calendar:universal_time(),
-  iolist_to_binary(io_lib:format(
-    "~.4.0w-~.2.0w-~.2.0wT~.2.0w:~.2.0w:~.2.0wZ",
-    [Year, Month, Day, Hour, Min, Sec] )).

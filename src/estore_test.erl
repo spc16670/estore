@@ -27,6 +27,7 @@ test(Module) ->
   User = UserRecord#'user'{
     'email' = "simonpeter@mail.com"
     ,'password' = "password"
+    ,'date_registered' = calendar:local_time()
   },
   {ok,UserId} = Module:save(User),
   ShopperRecord = estore:new(Module,'shopper'),
@@ -34,7 +35,7 @@ test(Module) ->
     'fname' = "Szymon"
     ,'mname' = "Piotr"
     ,'lname' = "Czaja"
-    ,'dob' = "1987-03-01"
+    ,'dob' = {{1987,3,1},{0,0,0}}
     ,'user_id' = UserId
   },
   {ok,ShopperId} = Module:save(Shopper),
@@ -68,6 +69,8 @@ test(Module) ->
   {ok,_PhoneId} = Module:save(Phone),
  
   %% -- SELECT
-  Module:find(shopper,[{'id','=',ShopperId}]).
+  ShopperR = Module:find(shopper,[{'id','=',ShopperId}]),
+  io:fwrite("~p~n",[ShopperR]),
+  Module:find(user,[{'id','=',UserId}]).
 
 

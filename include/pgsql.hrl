@@ -1,35 +1,38 @@
 -record(user,{
   id = [ 
-    {type,{bigserial,[]}}
+    {type,{'bigserial',[]}}
   ]
   ,email = [
-    {type,{varchar,[{length,50}]}}
+    {type,{'varchar',[{length,50}]}}
     ,{constraints,[{null,false}]}
   ]
   ,password = [
-    {type,{varchar,[{length,50}]}}
+    {type,{'varchar',[{length,50}]}}
     ,{constraints,[{null,false}]}
+  ]
+  ,date_registered = [
+    {type,{'timestamp',[]}}
   ]
 }).
 
 -record(shopper,{
   id = [ 
-    {type,{bigserial,[]}}
+    {type,{'bigserial',[]}}
   ]
   ,fname = [
-    {type,{varchar,[{length,50}]}}
+    {type,{'varchar',[{length,50}]}}
   ]
   ,mname = [
-    {type,{varchar,[{length,50}]}}
+    {type,{'varchar',[{length,50}]}}
   ]
   ,lname = [
-    {type,{varchar,[{length,50}]}}
+    {type,{'varchar',[{length,50}]}}
   ]
   ,dob = [
-    {type,{date,[{format,[iso8601]}]}}
+    {type,{'date',[]}}
   ]
   ,user_id = [
-    {type,{bigint,[]}}
+    {type,{'bigint',[]}}
     ,{constraints,[
       {references,user}
       ,{null,true}
@@ -39,44 +42,44 @@
 
 -record(address_type,{
   id = [ 
-    {type,{bigserial,[]}}
+    {type,{'bigserial',[]}}
   ]
   ,type = [
-    {type,{varchar,[{length,50}]}}
+    {type,{'varchar',[{length,50}]}}
   ]  
 }).
 
 -record(address,{
   id = [ 
-    {type,{bigserial,[]}}
+    {type,{'bigserial',[]}}
   ]
   ,line1 = [
-    {type,{varchar,[{length,50}]}}
+    {type,{'varchar',[{length,50}]}}
   ]
   ,line2 = [
-     {type,{varchar,[{length,50}]}}
+     {type,{'varchar',[{length,50}]}}
   ]
   ,line3 = [
-     {type,{varchar,[{length,50}]}}
+     {type,{'varchar',[{length,50}]}}
   ]
   ,postcode = [
-    {type,{varchar,[{length,50}]}}
+    {type,{'varchar',[{length,50}]}}
   ]
   ,city = [
-    {type,{varchar,[{length,50}]}}
+    {type,{'varchar',[{length,50}]}}
   ]
   ,country = [
-    {type,{varchar,[{length,50}]}}
+    {type,{'varchar',[{length,50}]}}
   ]
   ,type = [
-    {type,{integer,[]}}
+    {type,{'integer',[]}}
     ,{constraints,[
       {references,address_type}
       ,{null,false}
     ]}
   ]
   ,shopper_id = [
-    {type,{bigint,[]}}
+    {type,{'bigint',[]}}
     ,{constraints,[
       {references,shopper}
       ,{null,true}
@@ -86,29 +89,29 @@
 
 -record(phone_type,{
   id = [ 
-    {type,{bigserial,[]}}
+    {type,{'bigserial',[]}}
   ]
   ,type = [
-    {type,{varchar,[{length,50}]}}
+    {type,{'varchar',[{length,50}]}}
   ]  
 }).
 
 -record(phone, {
   id = [ 
-    {type,{bigserial,[]}}
+    {type,{'bigserial',[]}}
   ]
   ,number = [
-    {type,{varchar,[{length,50}]}}
+    {type,{'varchar',[{length,50}]}}
   ]
   ,type = [
-    {type,{integer,[]}}
+    {type,{'integer',[]}}
     ,{constraints,[
       {references,phone_type}
       ,{null,false}
     ]}
   ]
   ,shopper_id = [
-    {type,{bigint,[]}}
+    {type,{'bigint',[]}}
     ,{constraints,[
       {references,shopper}
       ,{null,true}
