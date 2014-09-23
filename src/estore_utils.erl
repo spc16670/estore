@@ -13,6 +13,7 @@
   ,date_to_erlang/2
   ,time_to_erlang/2
   ,datetime_to_erlang/2
+  ,bin_to_num/1
 ]).
 
 -include("estore.hrl").
@@ -66,5 +67,10 @@ datetime_to_erlang(DateTimeBin,Format) ->
   [Date,Time] = re:split(DateTimeBin," ",[{return,list}]),
   {date_to_erlang(Date,Format),time_to_erlang(Time,Format)}. 
 
-
+bin_to_num(Bin) ->
+    N = binary_to_list(Bin),
+    case string:to_float(N) of
+        {error,no_float} -> list_to_integer(N);
+        {F,_Rest} -> F
+    end.
  

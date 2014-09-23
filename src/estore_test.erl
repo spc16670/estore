@@ -44,8 +44,8 @@ test(Module) ->
   AddressType = AddressTypeRecord#'address_type'{'type' = "Residential"},
   {ok,AddressTypeId} = Module:save(AddressType),
   
-  AddressRecord = estore:new(Module,'address'),
-  Address = AddressRecord#'address'{
+  AddressRecord = estore:new(Module,'shopper_address'),
+  Address = AddressRecord#'shopper_address'{
     line1 = "Flat 1/2"
     ,line2 = "56 Cecil St"
     ,postcode = "G128RJ"
@@ -60,8 +60,8 @@ test(Module) ->
   PhoneType = PhoneTypeRecord#'phone_type'{'type' = "Mobile"},
   {ok,PhoneTypeId} = Module:save(PhoneType),
 
-  PhoneRecord = estore:new(Module,phone),
-  Phone = PhoneRecord#'phone'{
+  PhoneRecord = estore:new(Module,'shopper_phone'),
+  Phone = PhoneRecord#'shopper_phone'{
     'number' = "07871259234"
     ,'type' = PhoneTypeId
     ,'shopper_id' = ShopperId

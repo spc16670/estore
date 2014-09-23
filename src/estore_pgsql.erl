@@ -4,10 +4,10 @@
   create_index/2
   ,drop_index/1
   ,drop_index/2
-  ,transaction/1
-  ,rollback/0
   ,drop_table/1
   ,drop_table/2
+  ,transaction/1
+  ,rollback/0
 ]).
 
 -export([
@@ -128,10 +128,7 @@ new_model(Name) ->
   new_model(fields(Name),new_record(Name)).
 
 new_model([F|Fs],Record) ->
-  R = case has_relation(Record,F) of
-    {_RelType,_Ref} ->  set_value(F,undefined,Record);%set_value(F,new_model(Ref),Record);
-    undefined -> set_value(F,undefined,Record)
-  end,
+  R = set_value(F,undefined,Record),
   new_model(Fs,R);
 new_model([],Record) ->
   Record.
@@ -191,26 +188,9 @@ create_tables(Records) ->
 
 sql_create_tables(Records) ->
   Tables = lists:foldl(fun(E,Acc) ->
-    Acc ++ [sql_create_table(E)] ++ sql_create_relation_tables(E)
+    Acc ++ [sql_create_table(E)]
   end,[],Records),
   Tables.
-
-sql_create_relation_tables(Record) ->
-  Name = hd(tuple_to_list(Record)),
-  lists:foldl(fun(E,Acc) -> 
-    case sql_create_relation_table(Record,E) of
-      [] -> Acc ++ [];
-      Sql -> Acc ++ [Sql]
-    end
-  end,[],fields(Name)).
-
-sql_create_relation_table(Record,Field) ->
-  Table = hd(tuple_to_list(Record)),
-  Constraints = estore_utils:get_value(constraints,get_value(Field,Record),[]),
-  case has_relation(Record,Field) of
-    {many_to_many,Ref} -> sql_many_to_many(Table,Ref,Constraints);
-    _ -> []
-  end.
 
 create_table(Record) ->
   ?SQUERY(sql_create_table(Record)).
@@ -230,20 +210,13 @@ convert_fields(Record) ->
   Name = hd(tuple_to_list(Record)),
   lists:foldl(fun(E,Acc) ->
     FldOpts = get_value(E,Record),
-    FldOpts2 = if E =:= id -> 
-      FldOpts ++ [{constraints,[{pk,[]},{null,false}]}]; 
-      true -> FldOpts end,
-    FldTuple = {{Name,E},FldOpts2},
-    FldStmt = case has_relation(Record,E) of
-      undefined -> convert_field(FldTuple);
-      {references,_Ref} -> convert_field(FldTuple); 
-      _ -> []
-    end,
+    FldTuple = {{Name,E},FldOpts},
+    FldStmt = convert_field(FldTuple),
     Acc ++ FldStmt
   end,[],fields(Name)).
   
 convert_field({{Table,Field},FldOpts}) ->
-  value_to_string(Field) ++ " " ++
+  value_to_string(Field) ++ " " ++ 
   strip_comma(options_to_string({field,{Table,Field}},FldOpts)) ++ ", ".
 
 %% -----------------------------------------------------------------------------
@@ -258,13 +231,6 @@ drop_table(Table) ->
 drop_table(Table,Op) ->
   "DROP TABLE " ++ options_to_string({options,ifexists},Op) ++ " " 
   ++ table_name(Table) ++ " " ++ options_to_string({options,cascade},Op) ++ ";".
-
-%% -----------------------------------------------------------------------------
-%% -------------------------- RELATIONS ----------------------------------------
-%% -----------------------------------------------------------------------------
-
-sql_many_to_many(_Table,_Ref,_Constraints) ->
-  [].
 
 %% -----------------------------------------------------------------------------
 %% ------------------------------- SAVE ----------------------------------------
@@ -429,20 +395,19 @@ create_index(Table,Fields) when is_list(Fields) ->
 
 create_index_sql(Table,Column) ->
   Name = index_name(Table,Column),
-  "DO $$ BEGIN IF NOT EXISTS ( 
-    SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
-    WHERE  c.relname = '" ++ Name ++ "'
-    AND    n.nspname = '" ++ value_to_string(?SCHEMA) ++ "') THEN
-    CREATE INDEX " ++ Name ++ " ON " ++ table_name(Table) 
+  "DO $$ BEGIN IF NOT EXISTS ("
+    "SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace "
+    "WHERE c.relname = '" ++ Name ++ "'" 
+    "AND n.nspname = '" ++ value_to_string(?SCHEMA) ++ "') THEN "
+    "CREATE INDEX " ++ Name ++ " ON " ++ table_name(Table)
     ++ " (" ++ value_to_string(Column) ++ ");"
-  "END IF;" 
-  "END$$;".
+  "END IF; END$$;".
 
 drop_index(Table,Column) ->
   drop_index(index_name(Table,Column)).
 
 drop_index(Name) ->
-  case ?SQUERY(drop_index_sql(Name)) of
+  case ?SQUERY(sql_drop_index(Name)) of
     {ok,_,_} -> {ok,Name};
     Error -> {error,Error}
   end.
@@ -450,13 +415,19 @@ drop_index(Name) ->
 index_name(Table,Column) ->
   "ix_" ++ value_to_string(Table) ++ "_" ++ value_to_string(Column).
 
-drop_index_sql(Name) ->
+sql_drop_index(Name) ->
   "DROP INDEX " ++ table_name(Name) ++ ";".
 
 transaction(Stmt) ->
+  sql_transaction(Stmt).
+
+sql_transaction(Stmt) ->
   "BEGIN;\n " ++ Stmt ++ "COMMIT;\n".
 
 rollback() ->
+  sql_rollback().
+
+sql_rollback() ->
   "ROLLBACK;".
 
 
@@ -477,6 +448,11 @@ convert_to_result({'bigint',_Opts},Val) ->
   binary_to_integer(Val);
 convert_to_result({'serial',_Opts},Val) ->
   binary_to_integer(Val);
+convert_to_result({Decimal,_Opts},Val) when
+           Decimal =:= 'decimal'
+    orelse Decimal =:= 'float'
+    orelse Decimal =:= 'numeric' ->
+  estore_utils:bin_to_num(Val);
 convert_to_result({'varchar',_Opts},Val) ->
   binary_to_list(Val);
 convert_to_result({'date',_Opts},Val) ->
@@ -500,6 +476,12 @@ format_to_sql({'bigint',_Opts},Value) ->
   value_to_string(Value);
 format_to_sql({'integer',_Opts},Value) ->
   value_to_string(Value);
+format_to_sql({Decimal,Opts},Value) when 
+           Decimal =:= 'decimal' 
+    orelse Decimal =:= 'float' 
+    orelse Decimal =:= 'numeric' ->
+  Decimals = estore_utils:get_value(scale,Opts,0),
+  value_to_string({Value,Decimals});
 format_to_sql({'time',_Opts},Value) ->
   "'" ++ estore_utils:format_time(Value,'iso8601') ++ "'";
 format_to_sql({'date',_Opts},Value) ->
@@ -526,8 +508,16 @@ options_to_string({options,Key},Options) when is_list(Options) ->
 options_to_string({options,_},undefined) ->
   [];
 
-options_to_string({constraints,{_T,_F}},{references,Ref}) ->
-  "REFERENCES " ++ table_name(Ref) ++ " (id) ";
+options_to_string({constraints,{_T,_F}},{references,Opts}) ->
+  Ref = estore_utils:get_value('table',Opts,undefined),
+  OnDelete = estore_utils:get_value('on_delete',Opts,undefined),
+  OnUpdate = estore_utils:get_value('on_update',Opts,undefined),
+  "REFERENCES " ++ table_name(Ref) ++ " (id)" ++
+  if OnDelete =:= undefined -> ""; true -> 
+    " ON DELETE " ++ value_to_string(OnDelete) ++ "" end ++ 
+  if OnUpdate =:= undefined -> ""; true -> 
+    " ON UPDATE " ++ value_to_string(OnUpdate) ++ "" end
+  ++ " ";
 options_to_string({constraints,{_T,_F}},{null,false}) ->
   value_to_string('not') ++ " " ++ value_to_string(null)++ " ";
 options_to_string({constraints,{_T,_F}},{null,true}) ->
@@ -542,27 +532,50 @@ options_to_string({constraints,{T,F}},ConstraintsList) ->
   end,[],ConstraintsList);
 
 
-options_to_string('varchar',{length,Size}) ->
-   "(" ++  value_to_string(Size) ++ ")";
+options_to_string('varchar',Opts) ->
+  Length = estore_utils:get_value('length',Opts,undefined),
+  if Length =:= undefined -> ""; true ->
+   "(" ++  value_to_string(Length) ++ ")" end;
 options_to_string('bigint',_Opts) -> 
   "";
 options_to_string('integer',_Opts) -> 
   "";
+options_to_string(Decimal,Opts) when
+           Decimal =:= 'decimal'
+    orelse Decimal =:= 'float'
+    orelse Decimal =:= 'numeric' -> 
+  Precision = estore_utils:get_value(precision,Opts,undefined),
+  Scale = estore_utils:get_value(scale,Opts,undefined),
+  if Precision =:= undefined andalso Scale =:= undefined -> ""; true ->
+    if Precision /= undefined andalso Scale =:= undefined -> 
+      "(" ++ value_to_string(Precision) ++ ")";
+    true -> 
+      if Precision /= undefined andalso Scale /= undefined ->
+        "(" ++ value_to_string(Precision) ++ ", " ++ value_to_string(Precision) ++ ")";
+      true -> 
+        ""
+      end
+    end  
+  end;
+options_to_string('time',_Opts) -> 
+  "";
 options_to_string('date',_Opts) -> 
+  "";
+options_to_string('timestamp',_Opts) ->
   "";
 options_to_string('bigserial',_Opts) ->
   "";
-
+options_to_string('serial',_Opts) ->
+  "";
 options_to_string('type',{Type,FldOpts}) ->
-  value_to_string(Type) ++ " " ++ lists:foldl(fun(E,Acc) -> 
-    Acc ++ options_to_string(Type,E)
-  end,[],FldOpts);
-
+  value_to_string(Type) ++ " " ++ options_to_string(Type,FldOpts);
 options_to_string(_Key,undefined) ->
   [].
 
 value_to_string(V) when is_atom(V) andalso V /= undefined ->
   atom_to_list(V); 
+value_to_string({V,Dec}) when is_float(V) ->
+  float_to_list(V,Dec);
 value_to_string(V) when is_integer(V) ->
   integer_to_list(V);
 value_to_string({Mega,S,Micro}) when is_integer(S) ->
@@ -589,30 +602,6 @@ get_pool() ->
   Pools = estore_utils:get_db_config(pgsql,pools),
   {Name,_} = lists:nth(1,Pools),
   Name.
-
-
-has_relation(Record,FieldName) ->
-  Constraints = estore_utils:get_value(constraints,get_value(FieldName,Record),[]),
-  MaybeOneToMany = estore_utils:get_value(one_to_many,Constraints,undefined),
-  maybe_one_to_many(Constraints,MaybeOneToMany). 
-maybe_one_to_many(Constraints,undefined) ->
-  MaybeManyToMany = estore_utils:get_value(many_to_many,Constraints,undefined),
-  maybe_many_to_many(Constraints,MaybeManyToMany);
-maybe_one_to_many(_Constraints,Ref) ->
-  {one_to_many,Ref}.
-maybe_many_to_many(Constraints,undefined) ->
-  MaybeOneToOne = estore_utils:get_value(references,Constraints,undefined),
-  maybe_references(Constraints,MaybeOneToOne);
-maybe_many_to_many(_Constraints,Ref) ->
-  {many_to_many,Ref}.
-maybe_references(_Constraints,undefined) ->
-  undefined;
-maybe_references(_Constraints,Ref) ->
-  {references,Ref}.
-
-%relation_table_name(Table,Ref) ->
-%  value_to_string(Table) ++ "_" ++ value_to_string(Ref).
-
 
 table_name(Name) ->
   has_value(schema,?SCHEMA) ++ value_to_string(Name). 
