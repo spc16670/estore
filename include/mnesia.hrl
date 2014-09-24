@@ -1,2 +1,2 @@
--record(user_visits,{user,visits}).
--record(visits,{visits,counter}).
+-record(user_visits,{user,visit_counter}).
+-record(site_views,{site_views,counter}).
