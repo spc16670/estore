@@ -7,8 +7,9 @@ all: deps compile
 compile:
 	@$(REBAR) compile
 
-test: 
-	@$(REBAR) eunit skip_deps=true
+test:
+	ERL_AFLAGS="-s estore -config estore"
+	@$(REBAR) eunit skip_deps=true estore
 
 clean:
 	@$(REBAR) clean
