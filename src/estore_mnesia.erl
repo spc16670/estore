@@ -133,12 +133,23 @@ create_mnesia_table([],_Created) ->
 %% ----------------------------------------------------------------------------
 %% ----------------------------------------------------------------------------
 
-save_record(_Model) ->
-  ok.
+save_record(Record) ->
+  Table = hd(tuple_to_list(Record)),
+  Fun = fun() -> mnesia:write(Table,Record,write) end,
+  case mnesia:transaction(Fun) of
+    {atomic, ok} -> {ok,Record};
+    {aborted, Reason} -> {error, Reason}
+  end.
+
+%% ----------------------------------------------------------------------------
+%% ----------------------------------------------------------------------------
+%% ----------------------------------------------------------------------------
 
 select(_Name,_Id) ->
   ok.
 
 select(_Name,_Where,_OrderBy,_Limit,_Offset) ->
   ok.
+
+
 
