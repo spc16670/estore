@@ -6,6 +6,6 @@
       ,stdlib
     ]}
   ,{mod, {estore_app, []}}
-  ,{modules,[estore,estore_sup,estore_pgsql]}
+  ,{modules,[estore,estore_sup,estore_pgsql,estore_mnesia]}
   ,{env,[]}
  ]}.

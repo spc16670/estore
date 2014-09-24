@@ -14,22 +14,39 @@
   ,time_to_erlang/2
   ,datetime_to_erlang/2
   ,bin_to_num/1
+  ,root_dir/0
 ]).
 
 -include("estore.hrl").
 
+root_dir() ->
+  {ok,Path} = file:get_cwd(),
+  Path.
+
 get_module(Db) ->
-  list_to_atom(atom_to_list(?APP) ++ "_" ++ atom_to_list(Db)).
+  Prefix = atom_to_list(?APP) ++ "_",
+  case string:str(atom_to_list(Db),Prefix) of
+    0 -> list_to_atom(Prefix ++ atom_to_list(Db));
+    1 -> Db;
+    _ -> unknown_module
+  end.
+
 get_module() ->
-  list_to_atom(atom_to_list(?APP) ++ "_" ++ atom_to_list(get_config(default_db))).
+  M = case get_config(default_db) of
+    undefined -> {Db,_} = lists:nth(1,get_config(dbs)), Db;
+    Module -> Module
+  end,
+  list_to_atom(atom_to_list(?APP) ++ "_" ++ atom_to_list(M)).
 
 get_db_config(Db,Key) ->
   DbConfig = get_value(Db,get_config(dbs),[]),
   get_value(Key,DbConfig,undefined).
 
 get_config(Key) ->
-  {ok,Value} = application:get_env(?APP,Key),
-  Value.
+  case application:get_env(?APP,Key) of
+    {ok,Value} -> Value;
+    undefined -> undefined 
+  end.
 
 get_value(Key,PropList,Default) ->
   case lists:keyfind(Key,1,PropList) of

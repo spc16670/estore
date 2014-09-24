@@ -293,6 +293,13 @@
   ]
 }).
 
+-record(payment, {
+  id = [ 
+    {type,{'bigserial',[]}}
+    ,{constraints,[{'pk',[]},{null,false}]}
+  ]
+}).
+
 -record(order,{
   id = [ 
     {type,{'bigserial',[]}}
@@ -305,7 +312,17 @@
       ,{null,false}
     ]}
   ]
+  ,payment_id = [
+    {type,{'bigint',[]}}
+    ,{constraints,[
+      {references,[{table,payment}]}
+      ,{null,true}
+    ]}
+  ]
   ,order_datetime = [  
+    {type,{'timestamp',[]}}
+  ]
+  ,ship_datetime = [  
     {type,{'timestamp',[]}}
   ]
 }).

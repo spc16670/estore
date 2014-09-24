@@ -1,2 +1,4 @@
+-include("pgsql.hrl").
+-include("mnesia.hrl").
+
 -define(APP,estore).
--define(LOG(Level,Term),estore_logging:log_term(Level,Term)).

@@ -55,7 +55,6 @@
   get_pool/0
 ]).
 
--include("estore.hrl").
 -include("pgsql.hrl").
 
 -compile({parse_transform,estore_dynarec}).
@@ -64,6 +63,7 @@
 -define(EQUERY(Sql,Args),equery(Sql,Args)).
 -define(SCHEMA,get_schema()).
 -define(POOL,get_pool()).
+-define(LOG(Level,Term),estore_logging:log_term(Level,Term)).
 
 %% -----------------------------------------------------------------------------
 %% --------------------------------- API ---------------------------------------
@@ -381,26 +381,37 @@ delete_sql(Name,Where) when is_list(Where) ->
 %% -----------------------------------------------------------------------------
 %% ------------------------------ INDEXES --------------------------------------
 %% -----------------------------------------------------------------------------
- 
-create_index(Table,Field) when is_atom(Field) ->
-  Name = index_name(Table,Field),
-  case ?SQUERY(create_index_sql(Table,Field)) of
+
+create_index(Table,Field) when is_atom(Table), is_atom(Field) ->
+  IndexName = index_name(Table,Field),
+  TableName = table_name(Table),
+  Cols = value_to_string(Field),
+  Sql = create_index_sql(TableName,IndexName,Cols),
+  create_index(IndexName,Sql);
+
+create_index(Table,Columns) when is_atom(Table), is_list(Columns) ->
+  ColList = lists:foldl(fun(Column,Acc) -> 
+    Acc ++ value_to_string(Column) ++ ", " end
+  ,[],Columns),
+  TableName = table_name(Table),
+  IndexName = index_name(Table,Columns),
+  Cols = strip_comma(ColList),
+  Sql = create_index_sql(TableName,IndexName,Cols),
+  create_index(IndexName,Sql);
+
+create_index(Name,Sql) when is_list(Name), is_list(Sql) ->
+  case ?SQUERY(Sql) of
     {ok,_,_} -> {ok,Name};
     Error -> {error,Error}
-  end;
-create_index(Table,Fields) when is_list(Fields) ->
-  lists:foldl(fun(Field,Acc) -> 
-    Acc ++ [create_index(Table,Field)] end
-  ,[],Fields). 
+  end.
 
-create_index_sql(Table,Column) ->
-  Name = index_name(Table,Column),
+create_index_sql(Table,Name,Columns) ->
   "DO $$ BEGIN IF NOT EXISTS ("
     "SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace "
     "WHERE c.relname = '" ++ Name ++ "'" 
     "AND n.nspname = '" ++ value_to_string(?SCHEMA) ++ "') THEN "
-    "CREATE INDEX " ++ Name ++ " ON " ++ table_name(Table)
-    ++ " (" ++ value_to_string(Column) ++ ");"
+    "CREATE INDEX " ++ Name ++ " ON " ++ Table
+    ++ " (" ++ Columns ++ ");"
   "END IF; END$$;".
 
 drop_index(Table,Column) ->
@@ -412,8 +423,14 @@ drop_index(Name) ->
     Error -> {error,Error}
   end.
 
-index_name(Table,Column) ->
-  "ix_" ++ value_to_string(Table) ++ "_" ++ value_to_string(Column).
+index_name(Table,Column) when is_atom(Column) ->
+  "ix_" ++ value_to_string(Table) ++ "_" ++ value_to_string(Column);
+index_name(Table,Columns) when is_list(Columns) ->
+  ColNames = lists:foldl(fun(Column,Acc) -> 
+    Acc ++ string:sub_string(value_to_string(Column),1,1) ++ "_" end
+  ,[],Columns),
+  Length = integer_to_list(length(Columns)),
+  "ix_" ++ value_to_string(Table) ++ "_" ++ ColNames ++ Length.
 
 sql_drop_index(Name) ->
   "DROP INDEX " ++ table_name(Name) ++ ";".
@@ -429,10 +446,6 @@ rollback() ->
 
 sql_rollback() ->
   "ROLLBACK;".
-
-
-%% ------------------------------------------------------------------------------
-
 
 %% -----------------------------------------------------------------------------
 %% --------------------------- CONVERTERS --------------------------------------
@@ -578,15 +591,10 @@ value_to_string({V,Dec}) when is_float(V) ->
   float_to_list(V,Dec);
 value_to_string(V) when is_integer(V) ->
   integer_to_list(V);
-value_to_string({Mega,S,Micro}) when is_integer(S) ->
-  integer_to_list(Mega) ++ integer_to_list(S) ++ integer_to_list(Micro);
 value_to_string(V) when is_list(V) ->
   V;
 value_to_string(_V) ->
   [].
-
-has_value(schema,V) when V /= undefined ->
-  value_to_string(V) ++ ".".
 
 %% -----------------------------------------------------------------------------
 %% ----------------------------- UTILITIES -------------------------------------
@@ -605,6 +613,9 @@ get_pool() ->
 
 table_name(Name) ->
   has_value(schema,?SCHEMA) ++ value_to_string(Name). 
+
+has_value(schema,V) when V /= undefined ->
+  value_to_string(V) ++ ".".
 
 strip_comma(String) ->
   string:strip(string:strip(String,both,$ ),both,$,).

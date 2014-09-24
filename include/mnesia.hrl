@@ -1,0 +1,2 @@
+-record(user_visits,{user,visits}).
+-record(visits,{visits,counter}).

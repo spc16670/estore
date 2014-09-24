@@ -24,42 +24,48 @@
 -behaviour(estore_interface).
 
 -include("estore.hrl").
--include("pgsql.hrl").
 
 %% -----------------------------------------------------------------------------
 
 init() ->
   init(estore_utils:get_module()).
 init(Module) ->
-  Module:init().
+  M = estore_utils:get_module(Module),
+  M:init().
 
 models() ->
   models(estore_utils:get_module()).
 models(Module) ->
-  Module:models().
+  M = estore_utils:get_module(Module),
+  M:models().
 
 new(Name) ->
   new(estore_utils:get_module(),Name).
 new(Module,Name) ->
-  Module:new(Name).
+  M = estore_utils:get_module(Module),
+  M:new(Name).
 
 save(Record) ->
   save(estore_utils:get_module(),Record).
 save(Module,Record) ->
-  Module:save(Record).
+  M = estore_utils:get_module(Module),
+  M:save(Record).
 
 delete(Record,Conditions) ->
   delete(estore_utils:get_module(),Record,Conditions).
 delete(Module,Record,Conditions) ->
-  Module:delete(Record,Conditions).
+  M = estore_utils:get_module(Module),
+  M:delete(Record,Conditions).
 
 find(Name,Conditions) ->
   find(estore_utils:get_module(),Name,Conditions).
 find(Module,Name,Conditions) ->
-  Module:find(Name,Conditions).
+  M = estore_utils:get_module(Module),
+  M:find(Name,Conditions).
 
 find(Name,Where,OrderBy,Limit,Offset) ->
   find(estore_utils:get_module(),Name,Where,OrderBy,Limit,Offset).
 find(Module,Name,Where,OrderBy,Limit,Offset) ->
-  Module:find(Name,Where,OrderBy,Limit,Offset).
+  M = estore_utils:get_module(Module),
+  M:find(Name,Where,OrderBy,Limit,Offset).
 
