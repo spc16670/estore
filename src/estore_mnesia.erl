@@ -13,8 +13,6 @@
 -export([
   create_tables/1
   ,save_record/1
-  ,select/2
-  ,select/5
 ]).
 
 -include_lib("stdlib/include/qlc.hrl").
@@ -36,12 +34,12 @@ delete(_Name,_Conditions) ->
   ok.
 
 find(Name,Id) when is_integer(Id) ->
-  select(Name,Id);
+  match(Name,Id);
 find(Name,Conditions) when is_list(Conditions) ->
-  select(Name,Conditions).
+  match(Name,Conditions).
 
 find(Name,Where,OrderBy,Limit,Offset) ->
-  select(Name,Where,OrderBy,Limit,Offset).
+  match(Name,Where,OrderBy,Limit,Offset).
 
 init() ->
   create_tables([node()]).
@@ -112,44 +110,107 @@ create_tables(Nodes) ->
   Tables = lists:foldl(fun(Table,Acc) -> 
     Acc ++ [{Table,[{attributes,fields(Table)},{Copies,Nodes}]}]
   end,[],records()),
-  create_mnesia_table(Tables,[]),
-  mnesia:wait_for_tables(records(), 5000).
+  create_mnesia_table(Tables,[]).
 
 %% @private {@link create_tables/1}. helper. 
 
-create_mnesia_table([{Name,Atts}|Specs],_Created) ->
+create_mnesia_table([{Name,Atts}|Specs],Created) ->
   TableName = atom_to_list(Name),
   case mnesia:create_table(Name,Atts) of
     {aborted,Reason} ->
+      Result = Created ++ [{error,{aborted,Reason}}],
       estore_logging:log_term(info,{"Could not create " ++ TableName,Reason});
     {atomic,ok} -> 
+      Result = Created ++ [{ok,{atomic,ok}}],
       estore_logging:log_term(info,"Table " ++ TableName ++ " created.")
   end,
-  create_mnesia_table(Specs,_Created);
-create_mnesia_table([],_Created) ->
-  ok.
+  create_mnesia_table(Specs,Result);
+create_mnesia_table([],Created) ->
+  mnesia:wait_for_tables(records(),5000),
+  {ok_error(Created),Created}.
 
 %% ----------------------------------------------------------------------------
 %% ----------------------------------------------------------------------------
 %% ----------------------------------------------------------------------------
 
-save_record(Record) ->
+save_record(Record) when is_tuple(Record) ->
   Table = hd(tuple_to_list(Record)),
   Fun = fun() -> mnesia:write(Table,Record,write) end,
   case mnesia:transaction(Fun) of
-    {atomic, ok} -> {ok,Record};
-    {aborted, Reason} -> {error, Reason}
+    {atomic,ok} -> {ok,Record};
+    {aborted,Reason} -> {error,{aborted,Reason}}
+  end;
+save_record(Records) when is_list(Records) ->
+  Fun = fun() -> 
+    [mnesia:write(hd(tuple_to_list(Rec)),Rec,write)|| Rec <- Records] 
+  end,
+  case mnesia:transaction(Fun) of
+    {atomic,Results} -> {ok,Results};
+    {aborted,Reason} -> {error,{aborted,Reason}}
   end.
 
 %% ----------------------------------------------------------------------------
 %% ----------------------------------------------------------------------------
 %% ----------------------------------------------------------------------------
 
-select(_Name,_Id) ->
-  ok.
+match(Name,Id) ->
+  Fun = fun () -> mnesia:read(Name,Id) end,
+  case mnesia:transaction(Fun) of
+    {atomic,Result} -> Result;
+    {aborted, Reason} -> {error, Reason}
+  end.
 
-select(_Name,_Where,_OrderBy,_Limit,_Offset) ->
-  ok.
+match(Name,Where,OrderBy,Limit,Offset) ->
+  RawList = mnesia:dirty_match_object(Name,Where),
+  SortedList = order_by(RawList,OrderBy),
+  SkippedList = offset(SortedList,Offset),
+  limit(SkippedList,Limit).
+
+order_by([],_OrdersBy) ->
+  [];
+order_by(List,[]) ->
+  apply_order(List,[{id,asc}]);
+order_by(List,OrdersBy) ->
+  apply_order(List,OrdersBy).
+
+apply_order(Ordered,[{Field,AscDesc}|OrdersBy]) ->
+  case AscDesc of
+    asc ->
+      Fun = fun (A,B) -> apply(A,Field,[]) =< apply(B,Field,[]) end,
+      Sorted = lists:sort(Fun,Ordered);
+    desc ->
+      Fun = fun (A,B) -> apply(A,Field,[]) >= apply(B,Field,[]) end,
+      Sorted = lists:sort(Fun,Ordered);
+    _ ->
+      Sorted = Ordered
+    end,
+  apply_order(Sorted,OrdersBy);
+apply_order(Ordered,[]) ->
+  Ordered.
+  
+offset(List,0) -> 
+  List;
+offset(List,Skip) when Skip >= length(List) -> 
+  [];
+offset(List,Skip) -> 
+  lists:nthtail(Skip,List).
+
+limit(List,all) ->
+    List;
+limit(List,Max) when is_integer(Max) ->
+    lists:sublist(List,Max).
+
+%% ----------------------------------------------------------------------------
+%% ----------------------------------------------------------------------------
+%% ----------------------------------------------------------------------------
+
+ok_error([{ok,_}|Results]) ->
+  ok_error(Results);
+ok_error([]) ->
+  ok;
+ok_error([{error,_}|_Results]) ->
+  error.
+
 
 
 

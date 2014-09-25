@@ -87,12 +87,15 @@ find(Name,Where,OrderBy,Limit,Offset) ->
   select(Name,Where,OrderBy,Limit,Offset).
 
 init() ->
-  drop_schema(?SCHEMA),
-  create_schema(?SCHEMA),
-  create_tables(models()),
-  create_index(shopper,[lname,dob]),
-  create_index(address,postcode),
-  create_index(user,[email,password]).
+  Funs = [
+    {drop_schema,[?SCHEMA]}
+%    ,{create_schema,[?SCHEMA]}
+%    ,{create_tables,[models()]}
+%    ,{create_index,[shopper,[lname,dob]]}
+%    ,{create_index,[[address,postcode]]}
+%    ,{create_index,[user,[email,password]]}
+  ],
+  transaction(Funs).
 
 models() ->
   lists:foldl(fun(E,Acc) ->
@@ -138,10 +141,13 @@ new_model([],Record) ->
 %% -----------------------------------------------------------------------------
 
 drop_schema(Schema) ->
-  case schema_exists(Schema) of
-    true -> ?SQUERY(sql_drop_schema(Schema));
-    false -> ok
-  end.
+  Exists = schema_exists(Schema), 
+  if Exists =:= true -> 
+    case ?SQUERY(sql_drop_schema(Schema)) of
+      {ok,_,_} -> {ok,dropped}; 
+      Error -> {error,Error}
+    end; 
+  true -> {ok,exists} end.
 
 sql_drop_schema(Schema) ->
   sql_drop_schema(Schema,[{cascade,true}]).
@@ -153,10 +159,13 @@ sql_drop_schema(Schema,Opts) ->
 %% -----------------------------------------------------------------------------
 
 create_schema(Schema) ->
-  case schema_exists(Schema) of
-    false -> ?SQUERY(sql_create_schema(Schema)); 
-    true -> ok
-  end.
+  Exists = schema_exists(Schema), 
+  if Exists =:= true -> 
+    case ?SQUERY(sql_create_schema(Schema)) of
+      {ok,_,_} -> {ok,created}; 
+      Error -> {error,Error}
+    end; 
+  true -> {ok,exists} end.
     
 sql_create_schema(Schema) ->
   sql_create_schema(Schema,[]).
@@ -192,7 +201,9 @@ sql_create_tables(Records) ->
   end,[],Records),
   Tables.
 
-create_table(Record) ->
+create_table(RecordName) when is_atom(RecordName) ->
+  create_table(new_record(RecordName));
+create_table(Record) when is_tuple(Record) ->
   ?SQUERY(sql_create_table(Record)).
 
 sql_create_table(Record) ->
@@ -435,17 +446,46 @@ index_name(Table,Columns) when is_list(Columns) ->
 sql_drop_index(Name) ->
   "DROP INDEX " ++ table_name(Name) ++ ";".
 
-transaction(Stmt) ->
-  sql_transaction(Stmt).
+%% -----------------------------------------------------------------------------
+%% -----------------------------------------------------------------------------
+%% -----------------------------------------------------------------------------
 
-sql_transaction(Stmt) ->
-  "BEGIN;\n " ++ Stmt ++ "COMMIT;\n".
+transaction(Funs) ->
+  {ok,_} = begin_transaction(),
+  FunResults = lists:foldl(fun({Fun,Args},Acc) ->
+    Acc ++ [apply(?MODULE,Fun,Args)]
+  end,[],Funs),
+  case ok_error(FunResults) of
+    ok -> commit_transaction(); 
+    error -> rollback()
+  end.
+
+begin_transaction() ->
+  case ?SQUERY(sql_begin_transaction()) of
+    {ok,[],[]} -> {ok,started};
+    Error -> {error,Error}
+  end.
+
+sql_begin_transaction() ->
+  "BEGIN;\n".
 
 rollback() ->
-  sql_rollback().
+  case ?SQUERY(sql_rollback()) of
+    {ok,[],[]} -> {ok,rolledback};
+    Error -> {error,Error}
+  end.
 
 sql_rollback() ->
   "ROLLBACK;".
+
+commit_transaction() ->
+  case ?SQUERY(sql_commit_transaction()) of
+    {ok,[],[]} -> {ok,committed};
+    Error -> {error,Error}
+  end.
+
+sql_commit_transaction() ->
+  "COMMIT;".
 
 %% -----------------------------------------------------------------------------
 %% --------------------------- CONVERTERS --------------------------------------
@@ -620,4 +660,10 @@ has_value(schema,V) when V /= undefined ->
 strip_comma(String) ->
   string:strip(string:strip(String,both,$ ),both,$,).
 
+ok_error([{ok,_}|Results]) ->
+  ok_error(Results);
+ok_error([]) ->
+  ok;
+ok_error([{error,_}|_Results]) ->
+  error.
 
