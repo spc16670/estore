@@ -1,4 +1,5 @@
 REBAR = ./rebar
+DEPS=./deps/*/ebin
 
 .PHONY: all get-deps test clean compile build-plt dialyze
 
@@ -8,8 +9,7 @@ compile:
 	@$(REBAR) compile
 
 test:
-	ERL_AFLAGS="-s estore -config estore"
-	@$(REBAR) eunit skip_deps=true estore
+	export ERL_FLAGS="-config estore"; $(REBAR) eunit skip_deps=true estore
 
 clean:
 	@$(REBAR) clean

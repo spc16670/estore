@@ -1,6 +1,10 @@
 -module(estore).
 
 -export([
+  start/0
+]).
+
+-export([
   init/0
   ,models/0
   ,new/1
@@ -26,6 +30,11 @@
 -include("estore.hrl").
 
 %% -----------------------------------------------------------------------------
+start() -> 
+  start(?APP).
+
+start(App) ->
+  application:start(App,permanent).
 
 init() ->
   init(estore_utils:get_module()).
