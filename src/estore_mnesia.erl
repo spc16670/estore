@@ -7,7 +7,6 @@
   ,save/1
   ,delete/2
   ,find/2
-  ,find/5
 ]).
 
 -export([
@@ -36,16 +35,13 @@ delete(_Name,_Conditions) ->
 find(Name,Conditions) when is_list(Conditions) ->
   IsKey = io_lib:printable_list(Conditions),
   find(Name,Conditions,IsKey);
-find(Name,Key) ->
-  find(Name,Key,true).
+find(Name,Conditions) ->
+  find(Name,Conditions,false).
 
 find(Name,Id,true) -> 
   match(Name,Id);
 find(Name,Conditions,false) -> 
-  find(Name,Conditions,[],50,0).
-
-find(Name,Conditions,OrderBy,Limit,Offset) ->
-  match(Name,Conditions,OrderBy,Limit,Offset).
+  select(Name,Conditions).
 
 init() ->
   create_tables([node()]).
@@ -74,6 +70,7 @@ new_model([],Record) ->
 
 create_tables(Nodes) ->
   application:load(mnesia),
+
   %% Set mnesia dir
   MnesiaDir = case estore_utils:get_db_config(mnesia,dir) of
     [] ->
@@ -84,6 +81,7 @@ create_tables(Nodes) ->
       Dir
   end,
   application:set_env(mnesia,dir,MnesiaDir),
+
   %% Set table persistance
   {Copies,LogMsg} = case estore_utils:get_db_config(mnesia,store) of
     ram_copies -> 
@@ -110,6 +108,8 @@ create_tables(Nodes) ->
   {ok,MnesiaPath} = application:get_env(mnesia,dir),
   estore_logging:log_term(info,"Mnesia DIR is: " ++ MnesiaPath),
   estore_logging:log_term(info,"Mnesia tables reside " ++ LogMsg),
+
+  %% Start Mnesia
   application:start(mnesia),
 
   %% Create tables
@@ -163,15 +163,19 @@ save_record(Records) when is_list(Records) ->
 %% ----------------------------------------------------------------------------
 
 match(Name,Id) ->
-  Fun = fun () -> mnesia:read(Name,Id) end,
+  Fun = fun() -> mnesia:read(Name,Id) end,
   case mnesia:transaction(Fun) of
     {atomic,Result} -> Result;
     {aborted, Reason} -> {error, Reason}
   end.
 
-match(Name,Where,OrderBy,Limit,Offset) ->
-  RawList = mnesia:dirty_match_object(Name,Where,read),
-  SortedList = order_by(RawList,OrderBy),read,
+select(Name,Conditions) ->
+  MatchSpeck = estore_utils:get_value('where',Conditions,[]),
+  OrderBy = estore_utils:get_value('orderby',Conditions,[]),
+  Limit = estore_utils:get_value('limit',Conditions,all),
+  Offset = estore_utils:get_value('offset',Conditions,0),  
+  RawList = mnesia:dirty_select(Name,MatchSpeck,read),
+  SortedList = order_by(RawList,OrderBy),
   SkippedList = offset(SortedList,Offset),
   limit(SkippedList,Limit).
 

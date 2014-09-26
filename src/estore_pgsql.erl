@@ -7,7 +7,6 @@
   ,save/1
   ,delete/2
   ,find/2
-  ,find/5
 ]).
 
 -export([
@@ -39,7 +38,6 @@
   ,drop_table/1
 
   ,select/2
-  ,select/5
 
   ,transaction/1
   ,rollback/0
@@ -77,9 +75,6 @@ find(Name,Id) when is_integer(Id) ->
   select(Name,Id);
 find(Name,Conditions) when is_list(Conditions) ->
   select(Name,Conditions).
-
-find(Name,Where,OrderBy,Limit,Offset) ->
-  select(Name,Where,OrderBy,Limit,Offset).
 
 init() ->
   Funs = [
@@ -321,11 +316,12 @@ sql_update(Record,_RecordDef,[],Updates) ->
 %% -----------------------------------------------------------------------------
 
 select(Name,Id) when is_integer(Id) ->
-  select(Name,[{'id','=',Id}],[],50,0);
-select(Name,Where) when is_list(Where) ->
-  select(Name,Where,[],50,0).
-
-select(Name,Where,OrderBy,Limit,Offset) ->
+  select(Name,[{'where',[{'id','=',Id}]},{'orderby',[]},{'offset',0},{'limit',0}]);
+select(Name,Conditions) when is_list(Conditions) ->
+  Where = estore_utils:get_value('where',Conditions,[]),
+  OrderBy = estore_utils:get_value('orderby',Conditions,[]),
+  Limit = estore_utils:get_value('limit',Conditions,all),
+  Offset = estore_utils:get_value('offset',Conditions,0),
   Sql = select_sql(Name,Where,OrderBy,Limit,Offset),
   case ?SQUERY(Sql) of
     {ok,Cols,Vals} ->
@@ -395,9 +391,10 @@ results_to_record(Record,_RecordDef,[],_PropList) ->
 %% -----------------------------------------------------------------------------
 
 delete_sql(Name,Id) when is_integer(Id) ->
-  delete_sql(Name,[{'id','=',Id}]);
+  delete_sql(Name,[{'where',[{'id','=',Id}]}]);
 
-delete_sql(Name,Where) when is_list(Where) ->
+delete_sql(Name,Conditions) when is_list(Conditions) ->
+  Where = estore_utils:get_value('where',Conditions,[]),
   "DELETE FROM " ++ table_name(Name) ++ where(Name,Where).
 
 %% -----------------------------------------------------------------------------

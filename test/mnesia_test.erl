@@ -54,13 +54,13 @@ save_user_visits_test() ->
   UserVisitRecord = estore:new(?TEST_MODULE,user_visits),
   UserVisits = [
     UserVisitRecord#'user_visits'{
-      user="french@mustard.fr", visits=20, reviews_given=1, purchases=0}
+      id="french@mustard.fr", visits=20, reviews_given=1, purchases=0}
     ,UserVisitRecord#'user_visits'{
-      user="turkish@kebab.de", visits=15, reviews_given=15, purchases=15}
+      id="turkish@kebab.de", visits=15, reviews_given=15, purchases=15}
     ,UserVisitRecord#'user_visits'{
-      user="sousage@roll.co.uk", visits=104, reviews_given=2, purchases=15}
+      id="sousage@roll.co.uk", visits=104, reviews_given=2, purchases=15}
     ,UserVisitRecord#'user_visits'{
-      user="rumcajs@rozbojnik.pl", visits=50, reviews_given=15, purchases=5}
+      id="rumcajs@rozbojnik.pl", visits=50, reviews_given=15, purchases=5}
   ],
   Result = estore:save(?TEST_MODULE,UserVisits),
   ?assertMatch({ok,_},Result).
@@ -70,7 +70,7 @@ save_user_visits_test() ->
 %% ----------------------------------------------------------------------------
 
 find_stats_test() -> 
-  ?assert(is_list(estore:find(?TEST_MODULE,user_visits,[{'_','_','_','_','_'}]))).
+  ?assert(is_list(estore:find(?TEST_MODULE,user_visits,"french@mustard.fr"))).
 
 %% ----------------------------------------------------------------------------
 %% ------------------------------ DELETE --------------------------------------

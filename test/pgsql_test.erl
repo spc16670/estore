@@ -112,14 +112,14 @@ save_shopper_phones_test() ->
 %% ----------------------------------------------------------------------------
 
 find_shopper_test() -> 
-  ?assert(is_tuple(estore:find(?TEST_MODULE,user,[{'id','=',1}]))).
+  ?assert(is_tuple(estore:find(?TEST_MODULE,user,[{where,[{'id','=',1}]}]))).
 
 %% ----------------------------------------------------------------------------
 %% ------------------------------ DELETE --------------------------------------
 %% ----------------------------------------------------------------------------
 
 delete_shopper_test() -> 
-  ?assertMatch({ok,_},estore:delete(?TEST_MODULE,address_type,[{'type','LIKE',"%Sup%"}])).
+  ?assertMatch({ok,_},estore:delete(?TEST_MODULE,address_type,[{where,[{'type','LIKE',"%Sup%"}]}])).
 
 %% ----------------------------------------------------------------------------
 

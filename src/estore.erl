@@ -11,7 +11,6 @@
   ,save/1
   ,delete/2
   ,find/2
-  ,find/5
 ]).
 
 
@@ -22,7 +21,6 @@
   ,save/2
   ,delete/3
   ,find/3
-  ,find/6
 ]).
 
 -behaviour(estore_interface).
@@ -71,10 +69,4 @@ find(Name,Conditions) ->
 find(Module,Name,Conditions) ->
   M = estore_utils:get_module(Module),
   M:find(Name,Conditions).
-
-find(Name,Where,OrderBy,Limit,Offset) ->
-  find(estore_utils:get_module(),Name,Where,OrderBy,Limit,Offset).
-find(Module,Name,Where,OrderBy,Limit,Offset) ->
-  M = estore_utils:get_module(Module),
-  M:find(Name,Where,OrderBy,Limit,Offset).
 
