@@ -1,16 +1,6 @@
 -module(estore_pgsql).
 
 -export([
-  create_index/2
-  ,drop_index/1
-  ,drop_index/2
-  ,drop_table/1
-  ,drop_table/2
-  ,transaction/1
-  ,rollback/0
-]).
-
--export([
   init/0
   ,new/1
   ,models/0
@@ -27,28 +17,33 @@
   ,equery/3
 ]).
 
-
 -export([
-  create_schema/1
-  ,sql_create_schema/1
+  create_index/2
+  ,drop_index/1
+  ,drop_index/2
 
   ,schema_exists/1
   ,sql_schema_exists/1
-
+  ,create_schema/1
+  ,sql_create_schema/1
   ,drop_schema/1
   ,sql_drop_schema/1
 
   ,create_tables/1
-  ,sql_create_tables/1
   ,create_table/1
   ,sql_create_table/1
   ,sql_create_table/2
   ,sql_create_table/3
 
   ,drop_tables/0
+  ,drop_table/1
 
   ,select/2
   ,select/5
+
+  ,transaction/1
+  ,rollback/0
+  ,commit/0
 ]).
 
 -export([
@@ -89,11 +84,11 @@ find(Name,Where,OrderBy,Limit,Offset) ->
 init() ->
   Funs = [
     {drop_schema,[?SCHEMA]}
-%    ,{create_schema,[?SCHEMA]}
-%    ,{create_tables,[models()]}
-%    ,{create_index,[shopper,[lname,dob]]}
-%    ,{create_index,[[address,postcode]]}
-%    ,{create_index,[user,[email,password]]}
+    ,{create_schema,[?SCHEMA]}
+    ,{create_tables,[models()]}
+    ,{create_index,[shopper,[lname,dob]]}
+    ,{create_index,[shopper_address,[postcode]]}
+    ,{create_index,[user,[email,password]]}
   ],
   transaction(Funs).
 
@@ -141,13 +136,12 @@ new_model([],Record) ->
 %% -----------------------------------------------------------------------------
 
 drop_schema(Schema) ->
-  Exists = schema_exists(Schema), 
-  if Exists =:= true -> 
+  case schema_exists(Schema) of {ok,true} -> 
     case ?SQUERY(sql_drop_schema(Schema)) of
-      {ok,_,_} -> {ok,dropped}; 
-      Error -> {error,Error}
+      {ok,_,_} -> {ok,{Schema,dropped}}; 
+      Error -> {error,{Schema,Error}}
     end; 
-  true -> {ok,exists} end.
+  {ok,false} -> {ok,{Schema,not_exists}} end.
 
 sql_drop_schema(Schema) ->
   sql_drop_schema(Schema,[{cascade,true}]).
@@ -159,13 +153,12 @@ sql_drop_schema(Schema,Opts) ->
 %% -----------------------------------------------------------------------------
 
 create_schema(Schema) ->
-  Exists = schema_exists(Schema), 
-  if Exists =:= true -> 
+  case schema_exists(Schema) of {ok,false} -> 
     case ?SQUERY(sql_create_schema(Schema)) of
-      {ok,_,_} -> {ok,created}; 
-      Error -> {error,Error}
+      {ok,_,_} -> {ok,{Schema,created}}; 
+      Error -> {error,{Schema,Error}}
     end; 
-  true -> {ok,exists} end.
+  {ok,true} -> {ok,{Schema,exists}} end.
     
 sql_create_schema(Schema) ->
   sql_create_schema(Schema,[]).
@@ -177,8 +170,9 @@ sql_create_schema(Schema,Op) ->
 
 schema_exists(Schema) ->
   case ?SQUERY(sql_schema_exists(Schema)) of
-    {ok,_ColInfo,[{SchemaBin}]} when is_binary(SchemaBin) -> true;
-    {ok,_ColInfo,[]} -> false
+    {ok,_ColInfo,[{SchemaBin}]} when is_binary(SchemaBin) -> {ok,true};
+    {ok,_ColInfo,[]} -> {ok,false};
+    Error -> {error,Error}
   end.
 
 sql_schema_exists(Schema) ->
@@ -190,21 +184,32 @@ sql_schema_exists(Schema) ->
 %% -----------------------------------------------------------------------------
 
 create_tables(Records) ->
-  Sql = sql_create_tables(Records),
-  lists:foldl(fun(E,Acc) -> 
-    Acc ++ [?SQUERY(E)]
-  end,[],Sql).
+  case Records of 
+    [Record|_Rest] when is_tuple(Record) -> create_tables(Records,records);
+    [Name|_Rest] when is_atom(Name) -> create_tables(Records,atoms);
+    _ -> []
+  end.
+ 
+create_tables(Names,atoms) ->
+  ModelDefs = lists:foldl(fun(Name,Acc) -> 
+    Acc ++ [new_record(Name)]
+  end,[],Names),
+  create_tables(ModelDefs,records);
 
-sql_create_tables(Records) ->
-  Tables = lists:foldl(fun(E,Acc) ->
-    Acc ++ [sql_create_table(E)]
+create_tables(Records,records) ->
+  Results = lists:foldl(fun(Record,Acc) -> 
+    Acc ++ [create_table(Record)]
   end,[],Records),
-  Tables.
+  {ok_error(Results),Results}.
 
 create_table(RecordName) when is_atom(RecordName) ->
   create_table(new_record(RecordName));
 create_table(Record) when is_tuple(Record) ->
-  ?SQUERY(sql_create_table(Record)).
+  Name = hd(tuple_to_list(Record)),
+  case ?SQUERY(sql_create_table(Record)) of
+    {ok,_,_} -> {ok,{Name,created}};
+    Error -> {error,{Name,Error}}
+  end.
 
 sql_create_table(Record) ->
   sql_create_table(Record,[{ifexists,false}]).
@@ -233,13 +238,19 @@ convert_field({{Table,Field},FldOpts}) ->
 %% -----------------------------------------------------------------------------
 
 drop_tables() ->
-  lists:foldl(fun(E,Acc) ->
+  Results = lists:foldl(fun(E,Acc) ->
     Acc ++ [drop_table(E)] 
-  end,[],records()). 
+  end,[],records()),
+  {ok_error(Results),Results}.
 
 drop_table(Table) ->
-  drop_table(Table,[{ifexists,true},{cascade,true}]).
-drop_table(Table,Op) ->
+  Sql = sql_drop_table(Table,[{ifexists,true},{cascade,true}]),
+  case ?SQUERY(Sql) of
+    {ok,_,_} -> {ok,{Table,dropped}};
+    Error -> {error,{Table,Error}}
+  end.
+
+sql_drop_table(Table,Op) ->
   "DROP TABLE " ++ options_to_string({options,ifexists},Op) ++ " " 
   ++ table_name(Table) ++ " " ++ options_to_string({options,cascade},Op) ++ ";".
 
@@ -412,8 +423,8 @@ create_index(Table,Columns) when is_atom(Table), is_list(Columns) ->
 
 create_index(Name,Sql) when is_list(Name), is_list(Sql) ->
   case ?SQUERY(Sql) of
-    {ok,_,_} -> {ok,Name};
-    Error -> {error,Error}
+    {ok,_,_} -> {ok,{Name,created}};
+    Error -> {error,{Name,Error}}
   end.
 
 create_index_sql(Table,Name,Columns) ->
@@ -430,8 +441,8 @@ drop_index(Table,Column) ->
 
 drop_index(Name) ->
   case ?SQUERY(sql_drop_index(Name)) of
-    {ok,_,_} -> {ok,Name};
-    Error -> {error,Error}
+    {ok,_,_} -> {ok,{Name,created}};
+    Error -> {error,{Name,Error}}
   end.
 
 index_name(Table,Column) when is_atom(Column) ->
@@ -451,13 +462,15 @@ sql_drop_index(Name) ->
 %% -----------------------------------------------------------------------------
 
 transaction(Funs) ->
-  {ok,_} = begin_transaction(),
-  FunResults = lists:foldl(fun({Fun,Args},Acc) ->
+  FunResults = [begin_transaction()] ++ 
+  lists:foldl(fun({Fun,Args},Acc) ->
     Acc ++ [apply(?MODULE,Fun,Args)]
   end,[],Funs),
-  case ok_error(FunResults) of
-    ok -> commit_transaction(); 
-    error -> rollback()
+  IsOk = ok_error(FunResults), 
+  io:fwrite(IsOk),
+  case IsOk of
+    ok -> commit(FunResults); 
+    error -> rollback(FunResults)
   end.
 
 begin_transaction() ->
@@ -470,21 +483,25 @@ sql_begin_transaction() ->
   "BEGIN;\n".
 
 rollback() ->
+  rollback([]).
+rollback(FunResults) ->
   case ?SQUERY(sql_rollback()) of
-    {ok,[],[]} -> {ok,rolledback};
-    Error -> {error,Error}
+    {ok,[],[]} -> {ok,FunResults ++ [{ok,rolledback}]};
+    Error -> {error,{Error,FunResults}}
   end.
 
 sql_rollback() ->
   "ROLLBACK;".
 
-commit_transaction() ->
-  case ?SQUERY(sql_commit_transaction()) of
-    {ok,[],[]} -> {ok,committed};
-    Error -> {error,Error}
+commit() ->
+  commit([]).
+commit(FunResults) ->
+  case ?SQUERY(sql_commit()) of
+    {ok,[],[]} -> {ok,FunResults ++ [{ok,committed}]};
+    Error -> rollback(FunResults ++ [{error,Error}])
   end.
 
-sql_commit_transaction() ->
+sql_commit() ->
   "COMMIT;".
 
 %% -----------------------------------------------------------------------------
@@ -666,4 +683,3 @@ ok_error([]) ->
   ok;
 ok_error([{error,_}|_Results]) ->
   error.
-

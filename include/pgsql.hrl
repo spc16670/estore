@@ -305,10 +305,10 @@
     {type,{'bigserial',[]}}
     ,{constraints,[{'pk',[]},{null,false}]}
   ]
-  ,customer_id = [
+  ,shopper_id = [
     {type,{'bigint',[]}}
     ,{constraints,[
-      {references,[{table,customer}]}
+      {references,[{table,shopper}]}
       ,{null,false}
     ]}
   ]

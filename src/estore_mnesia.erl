@@ -33,13 +33,19 @@ save(Model) ->
 delete(_Name,_Conditions) ->
   ok.
 
-find(Name,Id) when is_integer(Id) ->
-  match(Name,Id);
 find(Name,Conditions) when is_list(Conditions) ->
-  match(Name,Conditions).
+  IsKey = io_lib:printable_list(Conditions),
+  find(Name,Conditions,IsKey);
+find(Name,Key) ->
+  find(Name,Key,true).
 
-find(Name,Where,OrderBy,Limit,Offset) ->
-  match(Name,Where,OrderBy,Limit,Offset).
+find(Name,Id,true) -> 
+  match(Name,Id);
+find(Name,Conditions,false) -> 
+  find(Name,Conditions,[],50,0).
+
+find(Name,Conditions,OrderBy,Limit,Offset) ->
+  match(Name,Conditions,OrderBy,Limit,Offset).
 
 init() ->
   create_tables([node()]).
@@ -71,9 +77,9 @@ create_tables(Nodes) ->
   %% Set mnesia dir
   MnesiaDir = case estore_utils:get_db_config(mnesia,dir) of
     [] ->
-      filename:join(estore_utils:root_dir(), "db");
+      filename:join(estore_utils:root_dir(), "mnesia_db");
     undefined ->
-      filename:join(estore_utils:root_dir(), "db");
+      filename:join(estore_utils:root_dir(), "mnesia_db");
     Dir ->
       Dir
   end,
@@ -117,12 +123,15 @@ create_tables(Nodes) ->
 create_mnesia_table([{Name,Atts}|Specs],Created) ->
   TableName = atom_to_list(Name),
   case mnesia:create_table(Name,Atts) of
-    {aborted,Reason} ->
-      Result = Created ++ [{error,{aborted,Reason}}],
-      estore_logging:log_term(info,{"Could not create " ++ TableName,Reason});
+    {aborted,{already_exists,Table}} ->
+      Result = Created ++ [{ok,{already_exists,Table}}],
+      estore_logging:log_term(info,TableName ++ " already exists.");
     {atomic,ok} -> 
       Result = Created ++ [{ok,{atomic,ok}}],
-      estore_logging:log_term(info,"Table " ++ TableName ++ " created.")
+      estore_logging:log_term(info,"Table " ++ TableName ++ " created.");
+    Error -> 
+      Result = Created ++ [{error,Error}],
+      estore_logging:log_term(info,{"Could not create " ++ TableName,Error})
   end,
   create_mnesia_table(Specs,Result);
 create_mnesia_table([],Created) ->
@@ -161,8 +170,8 @@ match(Name,Id) ->
   end.
 
 match(Name,Where,OrderBy,Limit,Offset) ->
-  RawList = mnesia:dirty_match_object(Name,Where),
-  SortedList = order_by(RawList,OrderBy),
+  RawList = mnesia:dirty_match_object(Name,Where,read),
+  SortedList = order_by(RawList,OrderBy),read,
   SkippedList = offset(SortedList,Offset),
   limit(SkippedList,Limit).
 
