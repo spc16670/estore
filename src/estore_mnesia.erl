@@ -7,6 +7,7 @@
   ,save/1
   ,delete/2
   ,find/2
+  ,find/5
 ]).
 
 -export([
@@ -14,7 +15,6 @@
   ,save_record/1
 ]).
 
--include_lib("stdlib/include/qlc.hrl").
 -include("mnesia.hrl").
 
 -compile({parse_transform,estore_dynarec}).
@@ -29,8 +29,8 @@ new(Name) ->
 save(Model) ->
   save_record(Model).
 
-delete(_Name,_Conditions) ->
-  ok.
+delete(Name,Id) ->
+  remove(Name,Id).
 
 find(Name,Conditions) when is_list(Conditions) ->
   IsKey = io_lib:printable_list(Conditions),
@@ -40,8 +40,11 @@ find(Name,Conditions) ->
 
 find(Name,Id,true) -> 
   match(Name,Id);
-find(Name,Conditions,false) -> 
-  select(Name,Conditions).
+find(Name,Where,false) -> 
+  select(Name,Where,[],50,0).
+
+find(Name,Where,OrderBy,Limit,Offset) -> 
+  select(Name,Where,OrderBy,Limit,Offset).
 
 init() ->
   create_tables([node()]).
@@ -74,9 +77,9 @@ create_tables(Nodes) ->
   %% Set mnesia dir
   MnesiaDir = case estore_utils:get_db_config(mnesia,dir) of
     [] ->
-      filename:join(estore_utils:root_dir(), "mnesia_db");
+      filename:join(estore_utils:root_dir(),"mnesia_db");
     undefined ->
-      filename:join(estore_utils:root_dir(), "mnesia_db");
+      filename:join(estore_utils:root_dir(),"mnesia_db");
     Dir ->
       Dir
   end,
@@ -169,12 +172,13 @@ match(Name,Id) ->
     {aborted, Reason} -> {error, Reason}
   end.
 
-select(Name,Conditions) ->
-  MatchSpeck = estore_utils:get_value('where',Conditions,[]),
-  OrderBy = estore_utils:get_value('orderby',Conditions,[]),
-  Limit = estore_utils:get_value('limit',Conditions,all),
-  Offset = estore_utils:get_value('offset',Conditions,0),  
-  RawList = mnesia:dirty_select(Name,MatchSpeck,read),
+%% @doc use match specification in where eg: [{'$1',[],['$1']}] to select all
+%% records.
+%%
+
+select(Name,Where,OrderBy,Limit,Offset) ->
+  MatchSpec = if Where =:= [all] -> [{'$1',[],['$1']}]; true -> Where end,
+  RawList = mnesia:dirty_select(Name,MatchSpec),
   SortedList = order_by(RawList,OrderBy),
   SkippedList = offset(SortedList,Offset),
   limit(SkippedList,Limit).
@@ -189,10 +193,10 @@ order_by(List,OrdersBy) ->
 apply_order(Ordered,[{Field,AscDesc}|OrdersBy]) ->
   case AscDesc of
     asc ->
-      Fun = fun (A,B) -> apply(A,Field,[]) =< apply(B,Field,[]) end,
+      Fun = fun (A,B) -> get_value(Field,A) =< get_value(Field,B) end,
       Sorted = lists:sort(Fun,Ordered);
     desc ->
-      Fun = fun (A,B) -> apply(A,Field,[]) >= apply(B,Field,[]) end,
+      Fun = fun (A,B) -> get_value(Field,A) >= get_value(Field,B) end,
       Sorted = lists:sort(Fun,Ordered);
     _ ->
       Sorted = Ordered
@@ -212,6 +216,13 @@ limit(List,all) ->
     List;
 limit(List,Max) when is_integer(Max) ->
     lists:sublist(List,Max).
+
+%% ----------------------------------------------------------------------------
+%% ----------------------------------------------------------------------------
+%% ----------------------------------------------------------------------------
+
+remove(Name,Id) ->
+  mnesia:dirty_delete(Name,Id).
 
 %% ----------------------------------------------------------------------------
 %% ----------------------------------------------------------------------------

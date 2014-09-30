@@ -1,0 +1,1 @@
+-record(review,{id,user,text}).

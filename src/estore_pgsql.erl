@@ -7,6 +7,7 @@
   ,save/1
   ,delete/2
   ,find/2
+  ,find/5
 ]).
 
 -export([
@@ -68,13 +69,21 @@ new(Name) ->
 save(Model) ->  
   save_record(Model).
 
-delete(Name,Conditions) ->
-  ?SQUERY(delete_sql(Name,Conditions)).
+delete(Name,Id) when is_integer(Id) ->
+  delete(Name,[{'id','=',Id}]);
+delete(Name,Conditions) when is_list(Conditions) ->
+  case ?SQUERY(delete_sql(Name,Conditions)) of
+    {ok,Count} -> {ok,{ok,Count}};
+    {error,Error} -> {error,Error}
+  end.
 
 find(Name,Id) when is_integer(Id) -> 
   select(Name,Id);
 find(Name,Conditions) when is_list(Conditions) ->
-  select(Name,Conditions).
+  select(Name,Conditions,[],50,0).
+
+find(Name,Where,OrderBy,Limit,Offset) when is_list(Where) ->
+  select(Name,Where,OrderBy,Limit,Offset).
 
 init() ->
   Funs = [
@@ -316,12 +325,9 @@ sql_update(Record,_RecordDef,[],Updates) ->
 %% -----------------------------------------------------------------------------
 
 select(Name,Id) when is_integer(Id) ->
-  select(Name,[{'where',[{'id','=',Id}]},{'orderby',[]},{'offset',0},{'limit',0}]);
-select(Name,Conditions) when is_list(Conditions) ->
-  Where = estore_utils:get_value('where',Conditions,[]),
-  OrderBy = estore_utils:get_value('orderby',Conditions,[]),
-  Limit = estore_utils:get_value('limit',Conditions,all),
-  Offset = estore_utils:get_value('offset',Conditions,0),
+  select(Name,[{'id','=',Id}],[],50,0).
+
+select(Name,Where,OrderBy,Limit,Offset) when is_list(Where) ->
   Sql = select_sql(Name,Where,OrderBy,Limit,Offset),
   case ?SQUERY(Sql) of
     {ok,Cols,Vals} ->
