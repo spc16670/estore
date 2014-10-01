@@ -10,7 +10,7 @@
   ,find/5
 ]).
 
--include("mnesia.hrl").
+-include("es.hrl").
 
 -compile({parse_transform,estore_dynarec}).
 
@@ -34,6 +34,9 @@ find(_Name,_Where,_OrderBy,_Limit,_Offset) ->
   ok.
 
 init() ->
+  ensure_started([
+    ,jsx
+  ]).
   ok.
 
 models() ->
@@ -54,3 +57,17 @@ new_model([F|Fs],Record) ->
 new_model([],Record) ->
   Record.
 
+%% ----------------------------------------------------------------------------
+%% ----------------------------------------------------------------------------
+%% ----------------------------------------------------------------------------
+
+%% @doc
+%% Ensures all dependencies are started.
+%% @end
+
+ensure_started(App)
+  case application:start(App) of
+    ok -> ok;
+    {error,{already_started,App}} -> ok
+  end.
+ 
