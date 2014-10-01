@@ -22,17 +22,20 @@ start_link() ->
 %% ===================================================================
 
 init([]) ->
-  Pools = start_pools(),
-  io:fwrite("~p~n",[Pools]),
+  Pools = case estore_utils:get_config(dbs) of
+    Dbs when is_list(Dbs) -> start_pools(Dbs);
+    _ -> []
+  end,
   {ok,{{one_for_one, 5,10},Pools}}.
 
-start_pools() ->
+start_pools(Dbs) ->
   lists:foldl(fun({Name,_Config},Acc) -> 
     Pools = estore_utils:get_db_config(Name,pools),
     if is_list(Pools) =:= true ->
+      io:fwrite("Starting pool for ~p~n",[Name]),
       Acc ++ start_db_pools(Name,Pools);
     true -> Acc ++ [] end
-  end,[],estore_utils:get_config(dbs)).
+  end,[],Dbs).
 
 start_db_pools(Db,Pools) ->
   WorkerName = list_to_atom(atom_to_list(?APP) ++ "_" 
