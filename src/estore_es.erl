@@ -35,8 +35,8 @@ find(_Name,_Where,_OrderBy,_Limit,_Offset) ->
 
 init() ->
   ensure_started([
-    ,jsx
-  ]).
+    jsx
+  ]),
   ok.
 
 models() ->
@@ -65,7 +65,7 @@ new_model([],Record) ->
 %% Ensures all dependencies are started.
 %% @end
 
-ensure_started(App)
+ensure_started(App) ->
   case application:start(App) of
     ok -> ok;
     {error,{already_started,App}} -> ok
