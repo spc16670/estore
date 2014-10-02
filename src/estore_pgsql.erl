@@ -43,6 +43,8 @@
   ,transaction/1
   ,rollback/0
   ,commit/0
+
+  ,convert_to_result/2  
 ]).
 
 -export([
@@ -51,13 +53,13 @@
 
 -include("$RECORDS_PATH/pgsql.hrl").
 
--compile({parse_transform,estore_dynarec}).
-
 -define(SQUERY(Sql),squery(Sql)).
 -define(EQUERY(Sql,Args),equery(Sql,Args)).
 -define(SCHEMA,get_schema()).
 -define(POOL,get_pool()).
 -define(LOG(Level,Term),estore_logging:log_term(Level,Term)).
+
+-compile({parse_transform,estore_dynarec}).
 
 %% -----------------------------------------------------------------------------
 %% --------------------------------- API ---------------------------------------
@@ -397,10 +399,9 @@ results_to_record(Record,_RecordDef,[],_PropList) ->
 %% -----------------------------------------------------------------------------
 
 delete_sql(Name,Id) when is_integer(Id) ->
-  delete_sql(Name,[{'where',[{'id','=',Id}]}]);
+  delete_sql(Name,[{'id','=',Id}]);
 
-delete_sql(Name,Conditions) when is_list(Conditions) ->
-  Where = estore_utils:get_value('where',Conditions,[]),
+delete_sql(Name,Where) when is_list(Where) ->
   "DELETE FROM " ++ table_name(Name) ++ where(Name,Where).
 
 %% -----------------------------------------------------------------------------
@@ -513,31 +514,33 @@ sql_commit() ->
 
 convert_to_result(_Type,'null') ->
   'null';
-convert_to_result({'integer',_Opts},Val) ->
+convert_to_result({'integer',_Opts},Val) when is_binary(Val) ->
   binary_to_integer(Val);
-convert_to_result({'bigserial',_Opts},Val) ->
+convert_to_result({'bigserial',_Opts},Val) when is_binary(Val) ->
   binary_to_integer(Val);
-convert_to_result({'bigint',_Opts},Val) ->
+convert_to_result({'bigint',_Opts},Val) when is_binary(Val) ->
   binary_to_integer(Val);
-convert_to_result({'serial',_Opts},Val) ->
+convert_to_result({'serial',_Opts},Val) when is_binary(Val) ->
   binary_to_integer(Val);
 convert_to_result({Decimal,_Opts},Val) when
-           Decimal =:= 'decimal'
-    orelse Decimal =:= 'float'
-    orelse Decimal =:= 'numeric' ->
+  Decimal =:= 'decimal', is_binary(Val) orelse 
+  Decimal =:= 'float', is_binary(Val) orelse
+  Decimal =:= 'numeric', is_binary(Val) ->
   estore_utils:bin_to_num(Val);
-convert_to_result({'varchar',_Opts},Val) ->
+convert_to_result({'varchar',_Opts},Val) when is_binary(Val) ->
   binary_to_list(Val);
-convert_to_result({'date',_Opts},Val) ->
+convert_to_result({'date',_Opts},Val) when is_binary(Val) ->
   estore_utils:date_to_erlang(Val,'iso8601');
-convert_to_result({'time',_Opts},Val) ->
+convert_to_result({'time',_Opts},Val) when is_binary(Val) ->
   estore_utils:time_to_erlang(Val,'iso8601');
-convert_to_result({'timestamp',_Opts},Val) ->
+convert_to_result({'timestamp',_Opts},Val) when is_binary(Val) ->
   estore_utils:datetime_to_erlang(Val,'iso8601');
 convert_to_result({'null',_Opts},_Val) ->
   undefined;
 convert_to_result(_Type,Val) ->
   Val.
+
+%% -----------------------------------------------------------------------------
 
 format_to_sql(_Type,'undefined') ->
   value_to_string('null');
@@ -645,16 +648,8 @@ options_to_string('type',{Type,FldOpts}) ->
 options_to_string(_Key,undefined) ->
   [].
 
-value_to_string(V) when is_atom(V) andalso V /= undefined ->
-  atom_to_list(V); 
-value_to_string({V,Dec}) when is_float(V) ->
-  float_to_list(V,Dec);
-value_to_string(V) when is_integer(V) ->
-  integer_to_list(V);
-value_to_string(V) when is_list(V) ->
-  V;
-value_to_string(_V) ->
-  [].
+value_to_string(V) ->
+  estore_utils:value_to_string(V).
 
 %% -----------------------------------------------------------------------------
 %% ----------------------------- UTILITIES -------------------------------------

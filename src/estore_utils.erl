@@ -15,9 +15,20 @@
   ,datetime_to_erlang/2
   ,bin_to_num/1
   ,root_dir/0
+  ,enabled_dbs/0
+  ,record_origin/1
+  ,record_names/1
+  ,json_to_record/2
+  ,value_to_string/1
 ]).
 
 -include("$RECORDS_PATH/estore.hrl").
+
+-compile({parse_transform,estore_dynarec}).
+
+%% ----------------------------------------------------------------------------
+%% ----------------------------------------------------------------------------
+%% ----------------------------------------------------------------------------
 
 root_dir() ->
   {ok,Path} = file:get_cwd(),
@@ -85,9 +96,65 @@ datetime_to_erlang(DateTimeBin,Format) ->
   {date_to_erlang(Date,Format),time_to_erlang(Time,Format)}. 
 
 bin_to_num(Bin) ->
-    N = binary_to_list(Bin),
-    case string:to_float(N) of
-        {error,no_float} -> list_to_integer(N);
-        {F,_Rest} -> F
-    end.
- 
+  N = binary_to_list(Bin),
+  case string:to_float(N) of
+    {error,no_float} -> list_to_integer(N);
+    {F,_Rest} -> F
+  end.
+
+enabled_dbs() ->
+  lists:foldl(fun({Name,_Conf},Acc) -> 
+    Acc ++ [Name] 
+  end, [], estore_utils:get_config(dbs)).
+
+record_origin(Name) ->
+  record_origin(Name,enabled_dbs()).
+
+record_origin(Name,[Db|Dbs]) ->
+  Module = get_module(Db),
+  case lists:member(Name,record_names(Module:models())) of
+    true -> Db;
+    false -> record_origin(Name,Dbs)
+  end;
+record_origin(_Name,[]) ->
+  undefined.
+  
+record_names(Records) ->
+  lists:foldl(fun(Record,Acc) ->
+    Acc ++ [hd(tuple_to_list(Record))]
+  end, [], Records).
+
+%% ----------------------------------------------------------------------------
+
+json_to_record(Name,Json) ->
+  KVList = jsx:decode(Json),
+  RecordDef = new_record(Name),
+  DbModule = get_module(record_origin(Name)),
+  results_to_record(new_record(Name),RecordDef,fields(Name),KVList,DbModule).
+
+results_to_record(Record,RecordDef,[Field|Fields],PropList,DbModule) ->
+  FieldBin = atom_to_binary(Field,'utf8'),
+  BinVal = estore_utils:get_value(FieldBin,PropList,undefined),
+  Type = estore_utils:get_value('type',get_value(Field,RecordDef),undefined),
+  Val = DbModule:convert_to_result(Type,BinVal),
+  NewRecord = set_value(Field,Val,Record),
+  results_to_record(NewRecord,RecordDef,Fields,PropList,DbModule);
+results_to_record(Record,_RecordDef,[],_PropList,_DbModule) ->
+  Record. 
+
+
+%% ----------------------------------------------------------------------------
+
+value_to_string(V) when is_atom(V) andalso V /= undefined ->
+  atom_to_list(V);
+value_to_string({V,Dec}) when is_float(V) ->
+  float_to_list(V,Dec);
+value_to_string(V) when is_integer(V) ->
+  integer_to_list(V);
+value_to_string(V) when is_list(V) ->
+  V;
+value_to_string(V) when is_binary(V) ->
+  binary_to_list(V);
+value_to_string(_V) ->
+  [].
+

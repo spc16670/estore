@@ -147,6 +147,8 @@ gen_setter_clause(RecordName, FieldName) ->
 %% erl_scan:tokens([], "records() -> [record_name_1, record_name_2, ...].\n", 0).
 %% </pre>
 gen_records(Tuples) ->
+%% -include("$RECORDS_PATH/estore.hrl").
+%%    io:fwrite("~n ~p ~n ~p ~n",[Tuples,os:get_env("RECORDS_NAME")]),
     ReversedPrefix = [{'->', 0}, {')', 0}, {'(', 0}, {atom, 0, records}],
     %% Keep only unique names.
     %Records = sets:to_list(sets:from_list([Name || {Name, _} <- Tuples])),

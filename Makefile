@@ -7,10 +7,10 @@ RECORDS_PATH := $(CURDIR)/include
 all: deps compile
 
 compile:
-	@$(REBAR) compile
+	export RECORDS_PATH=$(CURDIR)/include; $(REBAR) compile
 
 test:
-	export ERL_FLAGS="-config estore"; $(REBAR) eunit skip_deps=true estore
+	export RECORDS_PATH=$(CURDIR)/include; export ERL_FLAGS="-config estore"; $(REBAR) eunit skip_deps=true estore
 
 clean:
 	@$(REBAR) clean

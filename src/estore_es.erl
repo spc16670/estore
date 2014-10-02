@@ -34,7 +34,7 @@ find(_Name,_Where,_OrderBy,_Limit,_Offset) ->
   ok.
 
 init() ->
-  ensure_started([
+  estore_app:ensure_started([
     jsx
   ]),
   ok.
