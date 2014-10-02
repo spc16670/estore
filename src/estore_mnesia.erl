@@ -36,7 +36,7 @@ find(Name,Conditions) when is_list(Conditions) ->
   IsKey = io_lib:printable_list(Conditions),
   find(Name,Conditions,IsKey);
 find(Name,Conditions) ->
-  find(Name,Conditions,false).
+  find(Name,Conditions,true).
 
 find(Name,Id,true) -> 
   match(Name,Id);
@@ -191,7 +191,7 @@ select(Name,Where,OrderBy,Limit,Offset) ->
 order_by([],_OrdersBy) ->
   [];
 order_by(List,[]) ->
-  Key = lists:nth(1,fields(hd(List))),
+  Key = lists:nth(1,fields(hd(tuple_to_list(hd(List))))),
   apply_order(List,[{Key,asc}]);
 order_by(List,OrdersBy) ->
   apply_order(List,OrdersBy).
@@ -219,9 +219,9 @@ offset(List,Skip) ->
   lists:nthtail(Skip,List).
 
 limit(List,all) ->
-    List;
+  List;
 limit(List,Max) when is_integer(Max) ->
-    lists:sublist(List,Max).
+  lists:sublist(List,Max).
 
 %% ----------------------------------------------------------------------------
 %% ----------------------------------------------------------------------------
