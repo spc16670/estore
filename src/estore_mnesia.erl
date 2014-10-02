@@ -15,7 +15,7 @@
   ,save_record/1
 ]).
 
--include("mnesia.hrl").
+-include("$RECORDS_PATH/mnesia.hrl").
 
 -compile({parse_transform,estore_dynarec}).
 

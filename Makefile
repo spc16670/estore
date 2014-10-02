@@ -1,5 +1,6 @@
 REBAR = ./rebar
-DEPS=./deps/*/ebin
+DEPS = ./deps/*/ebin
+RECORDS_PATH := $(CURDIR)/include
 
 .PHONY: all get-deps test clean compile build-plt dialyze
 

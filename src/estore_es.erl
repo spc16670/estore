@@ -10,7 +10,7 @@
   ,find/5
 ]).
 
--include("es.hrl").
+-include("$RECORDS_PATH/es.hrl").
 
 -compile({parse_transform,estore_dynarec}).
 

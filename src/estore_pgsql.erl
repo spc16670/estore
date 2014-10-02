@@ -49,7 +49,7 @@
   get_pool/0
 ]).
 
--include("pgsql.hrl").
+-include("$RECORDS_PATH/pgsql.hrl").
 
 -compile({parse_transform,estore_dynarec}).
 
