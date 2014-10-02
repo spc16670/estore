@@ -8,7 +8,7 @@
 %% Supervisor callbacks
 -export([init/1]).
 
--include("estore.hrl").
+-include("$RECORDS_PATH/estore.hrl").
 
 %% ===================================================================
 %% API functions

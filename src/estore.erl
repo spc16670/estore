@@ -27,7 +27,7 @@
 
 -behaviour(estore_interface).
 
--include("estore.hrl").
+-include("$RECORDS_PATH/estore.hrl").
 
 %% -----------------------------------------------------------------------------
 start() -> 

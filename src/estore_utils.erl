@@ -17,7 +17,7 @@
   ,root_dir/0
 ]).
 
--include("estore.hrl").
+-include("$RECORDS_PATH/estore.hrl").
 
 root_dir() ->
   {ok,Path} = file:get_cwd(),
