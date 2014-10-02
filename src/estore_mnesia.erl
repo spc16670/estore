@@ -191,7 +191,8 @@ select(Name,Where,OrderBy,Limit,Offset) ->
 order_by([],_OrdersBy) ->
   [];
 order_by(List,[]) ->
-  apply_order(List,[{id,asc}]);
+  Key = lists:nth(1,fields(hd(List))),
+  apply_order(List,[{Key,asc}]);
 order_by(List,OrdersBy) ->
   apply_order(List,OrdersBy).
 
