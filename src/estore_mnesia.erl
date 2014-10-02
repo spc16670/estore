@@ -179,7 +179,12 @@ match(Name,Id) ->
 select(Name,Where,OrderBy,Limit,Offset) ->
   MatchSpec = if Where =:= [all] -> [{'$1',[],['$1']}]; true -> Where end,
   RawList = mnesia:dirty_select(Name,MatchSpec),
-  SortedList = order_by(RawList,OrderBy),
+  SortedList = if RawList /= [] ->
+    Head = lists:nth(1,RawList),
+    case is_record(Head,Name) of true ->
+      order_by(RawList,OrderBy);
+    false -> RawList end;
+  true -> RawList end,
   SkippedList = offset(SortedList,Offset),
   limit(SkippedList,Limit).
 
