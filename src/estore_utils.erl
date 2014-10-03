@@ -17,6 +17,7 @@
   ,root_dir/0
   ,enabled_dbs/0
   ,record_origin/1
+  ,record_name/1
   ,record_names/1
   ,json_to_record/2
   ,value_to_string/1
@@ -121,8 +122,11 @@ record_origin(_Name,[]) ->
   
 record_names(Records) ->
   lists:foldl(fun(Record,Acc) ->
-    Acc ++ [hd(tuple_to_list(Record))]
+    Acc ++ [record_name(Record)]
   end, [], Records).
+
+record_name(Record) ->
+  hd(tuple_to_list(Record)).
 
 %% ----------------------------------------------------------------------------
 

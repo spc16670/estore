@@ -25,6 +25,11 @@
   ,find/6
 ]).
 
+-export([
+  json_to_record/1
+  ,record_to_json/1
+]).
+
 -behaviour(estore_interface).
 
 -include("$RECORDS_PATH/estore.hrl").
@@ -78,3 +83,10 @@ find(Module,Name,Where,OrderBy,Limit,Offset) ->
   M = estore_utils:get_module(Module),
   M:find(Name,Where,OrderBy,Limit,Offset).
 
+%% ----------------------------------------------------------------------------
+
+json_to_record(Json) ->
+  esotre_json:json_to_record(Json).
+
+record_to_json(Record) -> 
+  estore_json:record_to_json(Record).

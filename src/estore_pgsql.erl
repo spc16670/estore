@@ -53,6 +53,8 @@
 
 -include("$RECORDS_PATH/pgsql.hrl").
 
+-define(RECORD_NAME(Record),estore_utils:record_name(Record)).
+
 -define(SQUERY(Sql),squery(Sql)).
 -define(EQUERY(Sql,Args),equery(Sql,Args)).
 -define(SCHEMA,get_schema()).
@@ -211,7 +213,7 @@ create_tables(Records,records) ->
 create_table(RecordName) when is_atom(RecordName) ->
   create_table(new_record(RecordName));
 create_table(Record) when is_tuple(Record) ->
-  Name = hd(tuple_to_list(Record)),
+  Name = ?RECORD_NAME(Record),
   case ?SQUERY(sql_create_table(Record)) of
     {ok,_,_} -> {ok,{Name,created}};
     Error -> {error,{Name,Error}}
@@ -221,7 +223,7 @@ sql_create_table(Record) ->
   sql_create_table(Record,[{ifexists,false}]).
 
 sql_create_table(Record,Options) ->
-  Name = hd(tuple_to_list(Record)),
+  Name = ?RECORD_NAME(Record),
   Fields = strip_comma(convert_fields(Record)),
   sql_create_table(Name,Fields,Options).
 sql_create_table(Name,Fields,Options) ->
@@ -229,7 +231,7 @@ sql_create_table(Name,Fields,Options) ->
   ++ table_name(Name) ++ " (" ++ Fields ++ "\n); ".
 
 convert_fields(Record) ->
-  Name = hd(tuple_to_list(Record)),
+  Name = ?RECORD_NAME(Record),
   lists:foldl(fun(E,Acc) ->
     FldOpts = get_value(E,Record),
     FldTuple = {{Name,E},FldOpts},
@@ -281,7 +283,7 @@ save_insert(Record) ->
   end.
 
 sql_insert(Record) ->
-  Name = hd(tuple_to_list(Record)),
+  Name = ?RECORD_NAME(Record),
   sql_insert(Record,new_record(Name),fields(Name),[],[]).
 
 sql_insert(Record,RecordDef,[id|Fs],Insert,Value) ->
@@ -293,7 +295,7 @@ sql_insert(Record,RecordDef,[F|Fs],Insert,Value) ->
   Values = Value ++ Formatted,
   sql_insert(Record,RecordDef,Fs,Inserts,Values);
 sql_insert(Record,_RecordDef,[],Inserts,Values) -> 
-  Name = hd(tuple_to_list(Record)),
+  Name = ?RECORD_NAME(Record),
   "INSERT INTO " ++ table_name(Name) ++ " ( " ++ strip_comma(Inserts) ++
    " ) VALUES ( " ++ strip_comma(Values) ++ " ) RETURNING id;". 
 
@@ -306,7 +308,7 @@ save_update(Record) ->
   end. 
 
 sql_update(Record) ->
-  Name = hd(tuple_to_list(Record)),
+  Name = ?RECORD_NAME(Record),
   sql_update(Record,new_record(Name),fields(Name),[]).
 
 sql_update(Record,RecordDef,[id|Fs],Update) ->
@@ -317,7 +319,7 @@ sql_update(Record,RecordDef,[F|Fs],Update) ->
   Updates = value_to_string(F) ++ " = " ++ Formatted,
   sql_update(Record,RecordDef,Fs,Update ++ Updates);
 sql_update(Record,_RecordDef,[],Updates) -> 
-  Name = hd(tuple_to_list(Record)),
+  Name = ?RECORD_NAME(Record),
   Id = format_to_sql(integer,get_value(id,Record)),
   "UPDATE " ++ table_name(Name) ++ " SET " ++ strip_comma(Updates) ++
    " WHERE id = " ++ Id  ++ "". 
