@@ -41,10 +41,12 @@
   ,select/2
 
   ,transaction/1
+  ,transaction/0
   ,rollback/0
   ,commit/0
 
-  ,convert_to_result/2  
+  ,convert_to_result/2
+  ,ok_error/1 
 ]).
 
 -export([
@@ -468,7 +470,7 @@ sql_drop_index(Name) ->
 %% -----------------------------------------------------------------------------
 
 transaction(Funs) ->
-  FunResults = [begin_transaction()] ++ 
+  FunResults = [transaction()] ++ 
   lists:foldl(fun({Fun,Args},Acc) ->
     Acc ++ [apply(?MODULE,Fun,Args)]
   end,[],Funs),
@@ -479,13 +481,13 @@ transaction(Funs) ->
     error -> rollback(FunResults)
   end.
 
-begin_transaction() ->
-  case ?SQUERY(sql_begin_transaction()) of
+transaction() ->
+  case ?SQUERY(sql_transaction()) of
     {ok,[],[]} -> {ok,started};
     Error -> {error,Error}
   end.
 
-sql_begin_transaction() ->
+sql_transaction() ->
   "BEGIN;\n".
 
 rollback() ->
