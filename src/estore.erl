@@ -86,7 +86,7 @@ find(Module,Name,Where,OrderBy,Limit,Offset) ->
 %% ----------------------------------------------------------------------------
 
 json_to_record(Json) ->
-  esotre_json:json_to_record(Json).
+  estore_json:json_to_record(Json).
 
 record_to_json(Record) -> 
   estore_json:record_to_json(Record).
