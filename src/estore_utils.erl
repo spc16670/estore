@@ -19,8 +19,8 @@
   ,record_origin/1
   ,record_name/1
   ,record_names/1
-  ,json_to_record/2
   ,value_to_string/1
+  ,is_proplist/1
 ]).
 
 -include("$RECORDS_PATH/estore.hrl").
@@ -128,24 +128,12 @@ record_names(Records) ->
 record_name(Record) ->
   hd(tuple_to_list(Record)).
 
-%% ----------------------------------------------------------------------------
-
-json_to_record(Name,Json) ->
-  KVList = jsx:decode(Json),
-  RecordDef = new_record(Name),
-  DbModule = get_module(record_origin(Name)),
-  results_to_record(new_record(Name),RecordDef,fields(Name),KVList,DbModule).
-
-results_to_record(Record,RecordDef,[Field|Fields],PropList,DbModule) ->
-  FieldBin = atom_to_binary(Field,'utf8'),
-  BinVal = estore_utils:get_value(FieldBin,PropList,undefined),
-  Type = estore_utils:get_value('type',get_value(Field,RecordDef),undefined),
-  Val = DbModule:convert_to_result(Type,BinVal),
-  NewRecord = set_value(Field,Val,Record),
-  results_to_record(NewRecord,RecordDef,Fields,PropList,DbModule);
-results_to_record(Record,_RecordDef,[],_PropList,_DbModule) ->
-  Record. 
-
+is_proplist([]) -> 
+  true;
+is_proplist([{_,_}|L]) -> 
+  is_proplist(L);
+is_proplist(_) -> 
+  false.
 
 %% ----------------------------------------------------------------------------
 

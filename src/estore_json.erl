@@ -41,9 +41,13 @@
 %%  , "data" : { "key" : "value"} }
 
 json_to_record(Json) ->
-  KVList = jsx:decode(Json),
-  NameBin = estore_utils:get_value(?RECORD_TYPE_KEY,KVList,undefined),
-  KVData = estore_utils:get_value(?RECORD_DATA_KEY,KVList,undefined),
+  json_to_record(Json,estore_utils:is_proplist(Json)).
+  
+json_to_record(Json,false) ->
+  json_to_record(jsx:decode(Json),true);
+json_to_record(Json,true) ->
+  NameBin = estore_utils:get_value(?RECORD_TYPE_KEY,Json,undefined),
+  KVData = estore_utils:get_value(?RECORD_DATA_KEY,Json,undefined),
   if NameBin /= undefined ->
     if KVData /= undefined ->
       Name = binary_to_atom(NameBin,'utf8'),
