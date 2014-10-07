@@ -93,7 +93,7 @@ find(Name,Where,OrderBy,Limit,Offset) when is_list(Where) ->
 init() ->
   try
     {ok,started} = transaction()
-    ,drop_schema(?SCHEMA)
+    %%,drop_schema(?SCHEMA)
     ,create_schema(?SCHEMA)
     ,create_tables(models())
     ,create_index(shopper,[lname,dob])
