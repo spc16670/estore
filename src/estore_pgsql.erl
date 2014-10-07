@@ -40,7 +40,6 @@
 
   ,select/2
 
-  ,transaction/1
   ,transaction/0
   ,rollback/0
   ,commit/0
@@ -92,15 +91,19 @@ find(Name,Where,OrderBy,Limit,Offset) when is_list(Where) ->
   select(Name,Where,OrderBy,Limit,Offset).
 
 init() ->
-  Funs = [
-    {drop_schema,[?SCHEMA]}
-    ,{create_schema,[?SCHEMA]}
-    ,{create_tables,[models()]}
-    ,{create_index,[shopper,[lname,dob]]}
-    ,{create_index,[shopper_address,[postcode]]}
-    ,{create_index,[user,[email,password]]}
-  ],
-  transaction(Funs).
+  try
+    {ok,started} = transaction()
+    ,drop_schema(?SCHEMA)
+    ,create_schema(?SCHEMA)
+    ,create_tables(models())
+    ,create_index(shopper,[lname,dob])
+    ,create_index(shopper_address,[postcode])
+    ,create_index(user,[email,password])
+    ,{ok,committed} = commit()
+  catch Error:Reason ->
+    Rollback = rollback(),
+    ?LOG(info,[Error,Reason,Rollback])
+  end.
 
 models() ->
   lists:foldl(fun(E,Acc) ->
@@ -469,18 +472,6 @@ sql_drop_index(Name) ->
 %% -----------------------------------------------------------------------------
 %% -----------------------------------------------------------------------------
 
-transaction(Funs) ->
-  FunResults = [transaction()] ++ 
-  lists:foldl(fun({Fun,Args},Acc) ->
-    Acc ++ [apply(?MODULE,Fun,Args)]
-  end,[],Funs),
-  IsOk = ok_error(FunResults), 
-  io:fwrite(IsOk),
-  case IsOk of
-    ok -> commit(FunResults); 
-    error -> rollback(FunResults)
-  end.
-
 transaction() ->
   case ?SQUERY(sql_transaction()) of
     {ok,[],[]} -> {ok,started};
@@ -491,22 +482,18 @@ sql_transaction() ->
   "BEGIN;\n".
 
 rollback() ->
-  rollback([]).
-rollback(FunResults) ->
   case ?SQUERY(sql_rollback()) of
-    {ok,[],[]} -> {ok,FunResults ++ [{ok,rolledback}]};
-    Error -> {error,{Error,FunResults}}
+    {ok,[],[]} -> {ok,rolledback};
+    Error -> {error,Error}
   end.
 
 sql_rollback() ->
   "ROLLBACK;".
 
 commit() ->
-  commit([]).
-commit(FunResults) ->
   case ?SQUERY(sql_commit()) of
-    {ok,[],[]} -> {ok,FunResults ++ [{ok,committed}]};
-    Error -> rollback(FunResults ++ [{error,Error}])
+    {ok,[],[]} -> {ok,committed};
+    Error -> {error,Error}
   end.
 
 sql_commit() ->
