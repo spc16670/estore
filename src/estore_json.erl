@@ -3,6 +3,7 @@
 -export([
   json_to_record/1
   ,record_to_json/1
+  ,record_to_kv/1
 ]).
 
 -include("$RECORDS_PATH/estore.hrl").
@@ -88,22 +89,24 @@ json_to_erlang(_TypeDef,Val) ->
 %% mandatory key as adopted by the convetion.
 
 record_to_json(Record) ->
+  RecordKV = record_to_kv(Record), 
+  jsx:encode(RecordKV).
+
+record_to_kv(Record) ->
   Name = ?RECORD_NAME(Record),
-  DataStruct = record_to_json(fields(Name),Record,[]),
-  JsonStruct = [
-    {?JSON_SCOPE_KEY,?JSON_SCOPE_RESPONSE_VALUE}
+  DataStruct = record_to_kv(fields(Name),Record,[]),
+  [{?JSON_SCOPE_KEY,?JSON_SCOPE_RESPONSE_VALUE}
     ,{?RECORD_TYPE_KEY,atom_to_binary(Name,'utf8')}
     ,{?RECORD_DATA_KEY,DataStruct}
-  ], 
-  jsx:encode(JsonStruct).
+  ]. 
   
-record_to_json([Field|Fields],Record,Result) ->
+record_to_kv([Field|Fields],Record,Result) ->
   FieldBin = atom_to_binary(Field,'utf8'),
   Value = get_value(Field,Record),
   ValueBin = erlang_to_json(Value),
   Struct = Result ++ [{FieldBin,ValueBin}],
-  record_to_json(Fields,Record,Struct);
-record_to_json([],_Record,Result) ->
+  record_to_kv(Fields,Record,Struct);
+record_to_kv([],_Record,Result) ->
   Result.
   
 erlang_to_json(Val) when is_list(Val) ->
