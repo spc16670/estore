@@ -84,22 +84,31 @@ json_to_erlang(_TypeDef,Val) ->
   Val.
 
 %% ----------------------------------------------------------------------------
-%% @spec record_to_json(Record::record()) -> JSON::binary() | {error,Error::tuple()}.
+%% @spec record_to_json(Record::record() || Records::list() ) -> JSON::binary() 
+%%  || JSONs::list() | {error,Error::tuple()}.
 %% @doc Turns a record into a JSON object binary according specifying some
 %% mandatory key as adopted by the convetion.
 
-record_to_json(Record) ->
+record_to_json(Record) when is_tuple(Record) ->
   RecordKV = record_to_kv(Record), 
-  jsx:encode(RecordKV).
+  jsx:encode(RecordKV);
+record_to_json(Records) when is_list(Records) ->
+  lists:foldl(fun(Record,Acc) -> 
+    Acc ++ [record_to_json(Record)]
+  end,[],Records).
 
-record_to_kv(Record) ->
+record_to_kv(Record) when is_tuple(Record) ->
   Name = ?RECORD_NAME(Record),
   DataStruct = record_to_kv(fields(Name),Record,[]),
   [{?JSON_SCOPE_KEY,?JSON_SCOPE_RESPONSE_VALUE}
     ,{?RECORD_TYPE_KEY,atom_to_binary(Name,'utf8')}
     ,{?RECORD_DATA_KEY,DataStruct}
-  ]. 
-  
+  ];
+record_to_kv(Records) when is_list(Records) ->
+  lists:foldl(fun(Record,Acc) -> 
+    Acc ++ [record_to_kv(Record)]
+  end,[],Records).
+
 record_to_kv([Field|Fields],Record,Result) ->
   FieldBin = atom_to_binary(Field,'utf8'),
   Value = get_value(Field,Record),
