@@ -398,7 +398,7 @@ results_to_record(Record,RecordDef,[Field|Fields],PropList) ->
   NewRecord = set_value(Field,Val,Record),
   results_to_record(NewRecord,RecordDef,Fields,PropList);
 results_to_record(Record,_RecordDef,[],_PropList) ->
-  Record.
+  [Record].
 
 
 %% -----------------------------------------------------------------------------
