@@ -5,6 +5,7 @@
   ,new/1
   ,models/0
   ,save/1
+  ,delete/1
   ,delete/2
   ,find/2
   ,find/5
@@ -74,11 +75,16 @@ new(Name) ->
 save(Model) ->  
   save_record(Model).
 
+delete(Record) when is_tuple(Record) ->
+  Name = estore_utils:record_name(Record),
+  Id = get_value(id, Record),
+  delete(Name,Id).
+
 delete(Name,Id) when is_integer(Id) ->
   delete(Name,[{'id','=',Id}]);
 delete(Name,Conditions) when is_list(Conditions) ->
   case ?SQUERY(delete_sql(Name,Conditions)) of
-    {ok,Count} -> {ok,{ok,Count}};
+    {ok,Count} -> {ok,Count};
     {error,Error} -> {error,Error}
   end.
 

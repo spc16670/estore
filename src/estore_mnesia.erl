@@ -5,6 +5,7 @@
   ,new/1
   ,models/0
   ,save/1
+  ,delete/1
   ,delete/2
   ,find/2
   ,find/5
@@ -29,6 +30,11 @@ new(Name) ->
 
 save(Model) ->
   save_record(Model).
+
+delete(Record) ->
+  Name = estore_utils:record_name(Record),
+  Id = get_value(id, Record),
+  delete(Name,Id).
 
 delete(Name,Id) ->
   remove(Name,Id).

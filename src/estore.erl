@@ -9,6 +9,7 @@
   ,models/0
   ,new/1
   ,save/1
+  ,delete/1
   ,delete/2
   ,find/2
   ,find/5
@@ -65,11 +66,16 @@ save(Module,Record) ->
   M = estore_utils:get_module(Module),
   M:save(Record).
 
-delete(Record,Conditions) ->
-  delete(estore_utils:get_module(),Record,Conditions).
-delete(Module,Record,Conditions) ->
+delete(Record) ->
+  delete(estore_utils:get_module(),Record).
+delete(Module,Record) when is_atom(Module), is_tuple(Record) ->
   M = estore_utils:get_module(Module),
-  M:delete(Record,Conditions).
+  M:delete(Record);
+delete(Name,Conditions) when is_atom(Name), is_list(Conditions) ->
+  delete(estore_utils:get_module(),Name,Conditions).
+delete(Module,Name,Conditions) ->
+  M = estore_utils:get_module(Module),
+  M:delete(Name,Conditions).
 
 find(Name,Conditions) ->
   find(estore_utils:get_module(),Name,Conditions).

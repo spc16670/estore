@@ -10,10 +10,13 @@
   'ok'|tuple('error', Reason :: string()).
  
 -callback save(Adapter :: atom(),Record :: record()) -> 
-  'ok'|tuple('error', Reason :: string()).
+  tuple('ok', Id :: integer())|tuple('error', Reason :: string()).
+
+-callback delete(Adapter :: atom(),Record :: record()) -> 
+  tuple('ok',Count :: integer())|tuple('error', Reason :: string()).
 
 -callback delete(Adapter :: atom(),Record :: record(),Conditions :: list()) -> 
-  'ok'|tuple('error', Reason :: string()).
+  tuple('ok',Count :: integer())|tuple('error', Reason :: string()).
 
 -callback find(Adapter :: atom(),Name :: atom(),Conditions :: list()) -> 
   Records :: list() | tuple('error', Reason :: string()).
