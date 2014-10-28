@@ -140,7 +140,7 @@ is_proplist(_) ->
 value_to_string(V) when is_atom(V) andalso V /= undefined ->
   atom_to_list(V);
 value_to_string({V,Dec}) when is_float(V) ->
-  float_to_list(V,Dec);
+  float_to_list(V,[{decimals,Dec}]);
 value_to_string(V) when is_integer(V) ->
   integer_to_list(V);
 value_to_string(V) when is_list(V) ->
