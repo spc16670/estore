@@ -624,7 +624,7 @@ options_to_string(Decimal,Opts) when
       "(" ++ value_to_string(Precision) ++ ")";
     true -> 
       if Precision /= undefined andalso Scale /= undefined ->
-        "(" ++ value_to_string(Precision) ++ ", " ++ value_to_string(Precision) ++ ")";
+        "(" ++ value_to_string(Precision) ++ ", " ++ value_to_string(Scale) ++ ")";
       true -> 
         ""
       end
