@@ -1,0 +1,13 @@
+{
+  "mappings" : {
+    "staff" : {
+      "_ttl" : { "enabled" : true },
+      "properties": {
+        "fname" : { "type" : "string" },
+        "lname" : { "type" : "string" },
+        "dob" : { "type" : "date", "format":"basic_date" },
+        "age" : { "type" : "integer" }
+      }
+    }
+  }
+}

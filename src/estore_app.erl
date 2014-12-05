@@ -26,7 +26,9 @@ stop(_State) ->
 %% Ensures all dependencies are started.
 %% @end
 
-ensure_started(App) ->
+ensure_started(Apps) when is_list(Apps) ->
+  lists:map(fun(App) -> ensure_started(App) end,Apps);
+ensure_started(App) when is_atom(App) ->
   case application:start(App) of
     ok -> ok;
     {error,{already_started,App}} -> ok

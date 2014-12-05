@@ -4,6 +4,7 @@
   get_module/0
   ,get_module/1
   ,get_db_config/2
+  ,get_db_config/3
   ,get_config/1
   ,get_value/3
   ,remove_dups/1
@@ -49,6 +50,12 @@ get_module() ->
     Module -> Module
   end,
   list_to_atom(atom_to_list(?APP) ++ "_" ++ atom_to_list(M)).
+
+get_db_config(Db,Key,Default) ->
+  case get_db_config(Db,Key) of
+    undefined -> Default;
+    Val -> Val
+  end.
 
 get_db_config(Db,Key) ->
   DbConfig = get_value(Db,get_config(dbs),[]),

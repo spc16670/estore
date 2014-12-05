@@ -10,6 +10,10 @@
   ,find/5
 ]).
 
+-export([
+  ensure_indexes_exist/0
+]).
+
 -include("$RECORDS_PATH/es.hrl").
 
 -compile({parse_transform,estore_dynarec}).
@@ -34,9 +38,10 @@ find(_Name,_Where,_OrderBy,_Limit,_Offset) ->
   ok.
 
 init() ->
-  estore_app:ensure_started([
-    jsx
-  ]),
+  HttpRsc = estore_utils:get_db_config(es,http_rsc), 
+  HttpRscDeps = estore_utils:get_db_config(es,http_rsc_deps,[]), 
+  estore_app:ensure_started(HttpRscDeps ++ [HttpRsc]),
+  ensure_indexes_exist(),
   ok.
 
 models() ->
@@ -57,3 +62,16 @@ new_model([F|Fs],Record) ->
 new_model([],Record) ->
   Record.
 
+
+
+ensure_indexes_exist() ->
+  lists:foldl(fun(E,Acc) ->
+    try
+      UrlPath = re:replace(atom_to_list(E),"_","/",[{return,list}]),
+      Acc ++ [string:sub_string(UrlPath,1,string:rchr(UrlPath,$/) - 1)]
+    catch _:_ -> Acc
+    end
+  end,[],records()).
+
+
+ 

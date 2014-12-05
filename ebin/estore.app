@@ -1,0 +1,10 @@
+{application,estore,
+             [{description,"A database abstraction layer for Erlang"},
+              {vsn,"0.1.0"},
+              {applications,[kernel,stdlib]},
+              {mod,{estore_app,[]}},
+              {modules,[estore,estore_app,estore_dynarec,estore_es,
+                        estore_interface,estore_json,estore_logging,
+                        estore_mnesia,estore_pgsql,estore_pgsql_worker,
+                        estore_sup,estore_test,estore_utils]},
+              {env,[]}]}.
