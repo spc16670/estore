@@ -4,6 +4,7 @@
   json_to_record/1
   ,record_to_json/1
   ,record_to_kv/1
+  ,erlang_to_json/1
 ]).
 
 -include("$RECORDS_PATH/estore.hrl").
@@ -119,7 +120,10 @@ record_to_kv([],_Record,Result) ->
   Result.
   
 erlang_to_json(Val) when is_list(Val) ->
-  list_to_binary(Val);
+  case estore_utils:is_proplist(Val) of
+    true -> Val; 
+    false -> list_to_binary(Val)
+  end;
 erlang_to_json(Val) when is_integer(Val) ->
   Val;
 erlang_to_json(Val) when is_float(Val) ->

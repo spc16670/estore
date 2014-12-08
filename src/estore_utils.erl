@@ -22,6 +22,7 @@
   ,record_names/1
   ,value_to_string/1
   ,is_proplist/1
+  ,format_calltime/1
 ]).
 
 -include("$RECORDS_PATH/estore.hrl").
@@ -141,6 +142,10 @@ is_proplist([{_,_}|L]) ->
   is_proplist(L);
 is_proplist(_) -> 
   false.
+
+format_calltime(Time) ->
+  Float = Time / 1000000,
+  float_to_list(Float,[{decimals,3},compact]).
 
 %% ----------------------------------------------------------------------------
 
