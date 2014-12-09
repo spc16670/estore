@@ -9,7 +9,8 @@
 %% ES record names must be prefixed with the name of the index 
 
 -record(kfis_staff,{
-  fname = [{type,'string'}]
+  id = [{type,'long'}]
+  ,fname = [{type,'string'}]
   ,lname = [{type,'string'}]
   ,dob = [
     {type,'date'}

@@ -22,10 +22,11 @@ start_link() ->
 %% ===================================================================
 
 init([]) ->
-  Pools = case estore_utils:get_config(dbs) of
-    Dbs when is_list(Dbs) -> start_pools(Dbs);
-    _ -> []
+  Dbs = estore_utils:get_config(dbs), 
+  Pools = if Dbs /= undefined -> start_pools(Dbs);
+    true -> []
   end,
+  run_init(Dbs),
   {ok,{{one_for_one, 5,10},Pools}}.
 
 start_pools(Dbs) ->
@@ -47,3 +48,13 @@ start_db_pools(Db,Pools) ->
       {worker_module, WorkerName}] ++ SizeArgs,
       poolboy:child_spec(Name,PoolArgs,WorkerArgs)
     end,Pools).
+
+run_init(Dbs) ->
+  lists:foldl(fun({Name,Config},Acc) -> 
+    InitResult = case estore_utils:get_value(init,Config,false) of
+      true -> estore:init(Name);
+      _ -> {Name,no_init}
+    end,  
+    Acc ++ [InitResult]
+  end,[],Dbs).
+

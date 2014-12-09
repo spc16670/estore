@@ -15,6 +15,7 @@
   ,time_to_erlang/2
   ,datetime_to_erlang/2
   ,bin_to_num/1
+  ,num_to_bin/1
   ,root_dir/0
   ,enabled_dbs/0
   ,record_origin/1
@@ -110,6 +111,11 @@ bin_to_num(Bin) ->
     {error,no_float} -> list_to_integer(N);
     {F,_Rest} -> F
   end.
+
+num_to_bin(Num) when is_float(Num) ->
+  float_to_binary(Num);
+num_to_bin(Num) when is_integer(Num) ->
+  list_to_binary(integer_to_list(Num)).
 
 enabled_dbs() ->
   lists:foldl(fun({Name,_Conf},Acc) -> 

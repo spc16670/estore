@@ -4,9 +4,10 @@
   new/0
   ,new/1
   ,test/0
+  ,test/1
 ]).
 
--include("pgsql.hrl").
+-include("estore.hrl").
 
 %% -----------------------------------------------------------------------------
 
@@ -16,9 +17,10 @@ new(Model) ->
   Model:new(Model).
 
 test() ->
-  test(estore_pgsql).
+  test(estore_pgsql),
+  test(estore_es).
 
-test(Module) -> 
+test(Module) when Module =:= estore_pgsql -> 
   %% -- INIT
   Module:init(),
 
@@ -71,6 +73,25 @@ test(Module) ->
   %% -- SELECT
   ShopperR = Module:find(shopper,[{'id','=',ShopperId}]),
   io:fwrite("~p~n",[ShopperR]),
-  Module:find(user,[{'id','=',UserId}]).
+  Module:find(user,[{'id','=',UserId}]);
+
+test(Module) when Module =:= estore_es ->
+  KSR = Module:new('kfis_staff'),
+  KSRec = KSR#'kfis_staff'{
+    'id'=1
+    ,'fname'="Szymon"
+    ,'lname'="Czaja"
+    ,'dob'="19870301"
+    ,'age'=27
+  },
+  KSR2 = Module:new('kfis_staff'),
+  KS2Rec = KSR2#'kfis_staff'{
+    'id'=2
+    ,'fname'="Raman"
+    ,'lname'="Jassal"
+    ,'dob'="19840601"
+    ,'age'=30
+  },
+  [KSRec,KS2Rec].
 
 

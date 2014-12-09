@@ -5,6 +5,7 @@
   ,record_to_json/1
   ,record_to_kv/1
   ,erlang_to_json/1
+  ,kv_wrapper/2
 ]).
 
 -include("$RECORDS_PATH/estore.hrl").
@@ -77,6 +78,13 @@ json_to_record(Record,_RecordDef,[],_PropList) ->
 
 %% ----------------------------------------------------------------------------
 
+kv_wrapper(Name,Kv) ->
+  [{?RECORD_TYPE_KEY,atom_to_binary(Name,'utf8')}
+    ,{?RECORD_DATA_KEY,Kv}
+  ]. 
+
+%% ----------------------------------------------------------------------------
+
 json_to_erlang(_TypeDef,Val) when is_binary(Val) ->
   binary_to_list(Val);
 json_to_erlang(_TypeDef,Val) when is_integer(Val) ->
@@ -101,10 +109,7 @@ record_to_json(Records) when is_list(Records) ->
 record_to_kv(Record) when is_tuple(Record) ->
   Name = ?RECORD_NAME(Record),
   DataStruct = record_to_kv(fields(Name),Record,[]),
-  [{?JSON_SCOPE_KEY,?JSON_SCOPE_RESPONSE_VALUE}
-    ,{?RECORD_TYPE_KEY,atom_to_binary(Name,'utf8')}
-    ,{?RECORD_DATA_KEY,DataStruct}
-  ];
+  kv_wrapper(Name,DataStruct) ++ [{?JSON_SCOPE_KEY,?JSON_SCOPE_RESPONSE_VALUE}];
 record_to_kv(Records) when is_list(Records) ->
   lists:foldl(fun(Record,Acc) -> 
     Acc ++ [record_to_kv(Record)]
