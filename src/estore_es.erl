@@ -17,6 +17,8 @@
   ,type_url/1
 
   %%--
+  ,insert/0
+  %%--
   ,create_indexes/0
   ,create_index/1
   ,get_mappings/0
@@ -102,6 +104,7 @@ req(Method,IndexUrl,Type,Data) ->
   req(Method,Url,Hdrs,Data,Opts,Timeout,Tag,Track).
 
 req(Method,Url,Hdrs,Data,Opts,Timeout,_Tag,_Track) ->
+  io:fwrite("DEBUG: ~p ~p ~p ~p ~p ~n",[Method,Url,Hdrs,Data,Opts]),
   {Time,Result} = timer:tc(lhttpc,request,[Url,Method,Hdrs,Data,Timeout,Opts]),
   Resp = case Result of
     {ok,{{HttpCode,_RespStr},RespHdrs,RespBody}} ->
@@ -115,7 +118,7 @@ req(Method,Url,Hdrs,Data,Opts,Timeout,_Tag,_Track) ->
   Resp#'resp'{'calltime'=CallTime}.
 
 %% ----------------------------------------------------------------------------
-%% ----------------------------------------------------------------------------
+%% ------------------------ INDEXES AND MAPPINGS ------------------------------
 %% ----------------------------------------------------------------------------
 
 ensure_indexes_exist() ->
@@ -219,8 +222,14 @@ mapping_struct(Type,PropKv) ->
   ]}].
 
 %% ----------------------------------------------------------------------------
+%% ---------------------------- BULK INSERT -----------------------------------
 %% ----------------------------------------------------------------------------
-%% ----------------------------------------------------------------------------
+
+insert() ->
+  IdexData = jsx:encode([{'index',[{'_index',<<"kfis">>},{'_type',<<"staff">>},{'_id',1}]}]),
+  Data = jsx:encode([{ttl,<<"1m">>},{wid,1},{fname,<<"szymon">>},{dob,<<"19870301">>},{age,27}]),
+  Post = <<IdexData/binary,$\n,Data/binary,$\n>>,
+  req('post',"_bulk",[],Post).
 
 
 
