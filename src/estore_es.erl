@@ -17,12 +17,21 @@
   ,type_url/1
 
   %%--
+  ,create_indexes/0
+  ,create_index/1
+  ,get_mappings/0
+  ,get_mapping/1
+  ,delete_index/1
+  ,index_exists/1
+  ,ensure_indexes_exist/0
   ,mappings_json/0
   ,mapping_json/1
   ,mapping_json/3
 ]).
 
 -include("$RECORDS_PATH/es.hrl").
+
+-record('resp',{result,response,code,headers,calltime}).
 
 -compile({parse_transform,estore_dynarec}).
 
@@ -49,8 +58,8 @@ init() ->
   HttpRsc = estore_utils:get_db_config(es,http_rsc), 
   HttpRscDeps = estore_utils:get_db_config(es,http_rsc_deps,[]), 
   estore_app:ensure_started(HttpRscDeps ++ [HttpRsc]),
-  mappings_json(),
-  ok.
+  Indices = ensure_indexes_exist(),
+  {ok,Indices}.
 
 models() ->
   lists:foldl(fun(E,Acc) ->
@@ -73,7 +82,6 @@ new_model([],Record) ->
 
 %% ----------------------------------------------------------------------------
 %% ----------------------------------------------------------------------------
-%% ----------------------------------------------------------------------------
 %%
 %% @doc
 %% lhttpc 
@@ -85,7 +93,7 @@ new_model([],Record) ->
 %%
 req(Method,IndexUrl,Type,Data) ->
   EsHost = estore_utils:get_db_config(es,es_url,[]),
-  Url = filename:join([EsHost,IndexUrl,Type]),
+  Url = EsHost ++ "/" ++ filename:join([IndexUrl,Type]),
   Hdrs = [],
   Opts = [],
   Track = [],
@@ -95,22 +103,70 @@ req(Method,IndexUrl,Type,Data) ->
 
 req(Method,Url,Hdrs,Data,Opts,Timeout,_Tag,_Track) ->
   {Time,Result} = timer:tc(lhttpc,request,[Url,Method,Hdrs,Data,Timeout,Opts]),
-  Response = case Result of
-    {ok,{{200,_RespStr},_RespHeaders,RespBody}} ->
-    {ok,RespBody};
-  {ok,{{HttpCode,_RespStr},_RespHeaders,_RespBody}} ->
-    {error,"ERROR: Unexpected HTTP code " ++ integer_to_list(HttpCode)};
-  {error,timeout} ->
-    {timeout,"ERROR: HTTP Request timed out."};
-  {error,_StackTrace} ->
-    {error,"ERROR: HTTP Request failed."}
+  Resp = case Result of
+    {ok,{{HttpCode,_RespStr},RespHdrs,RespBody}} ->
+      #'resp'{'result'=ok,'code'=HttpCode,'headers'=RespHdrs,'response'=RespBody};
+    {error,timeout} ->
+      #'resp'{'result'=timeout};
+    {error,StackTrace} ->
+      #'resp'{'result'=error,'response'=StackTrace}
   end,
   CallTime = estore_utils:format_calltime(Time),
-  {CallTime,Response}.
+  Resp#'resp'{'calltime'=CallTime}.
 
 %% ----------------------------------------------------------------------------
 %% ----------------------------------------------------------------------------
 %% ----------------------------------------------------------------------------
+
+ensure_indexes_exist() ->
+  lists:foldl(fun(E,Acc) ->
+    R = case index_exists(E) of
+      true -> {exists,E};
+      false -> create_index(E)
+    end,
+    Acc ++ [R]
+  end,[],records()).  
+
+index_exists(Name) ->
+  Resp = get_mapping(Name),
+  if Resp#'resp'.'result' =:= ok andalso Resp#'resp'.'code' =:= 404 -> 
+  false; true -> true end.
+
+get_mappings() ->
+  lists:foldl(fun(E,Acc) ->
+    Acc ++ [get_mapping(E)]
+  end,[],records()).
+
+get_mapping(Name) ->
+  case mapping_json(Name) of
+    {error,Error} -> {error,Error};
+    {ok,{Name,PropLst}} ->
+      IndexUrl = estore_utils:get_value(url,PropLst,[]),
+      Json = estore_utils:get_value(json,PropLst,[]),
+      req('get',IndexUrl,"_mapping",Json)
+  end.
+
+delete_index(Name) ->
+  case mapping_json(Name) of
+    {error,Error} -> {error,Error};
+    {ok,{Name,PropLst}} ->
+      IndexUrl = estore_utils:get_value(url,PropLst,[]),
+      req('delete',IndexUrl,[],[])
+  end.
+
+create_indexes() ->
+  lists:foldl(fun(E,Acc) ->
+    Acc ++ [create_index(E)]
+  end,[],records()).
+
+create_index(Name) ->
+  case mapping_json(Name) of
+    {error,Error} -> {error,Error};
+    {ok,{Name,PropLst}} ->
+      IndexUrl = estore_utils:get_value(url,PropLst,[]),
+      Json = estore_utils:get_value(json,PropLst,[]),
+      req('put',IndexUrl,[],Json)
+  end.
 
 type_urls() ->
   lists:foldl(fun(E,Acc) ->
@@ -140,7 +196,7 @@ mapping_json(Name) ->
     {ok,{Name,{Url,Type}}} ->
       mapping_json(Name,Url,Type);
     {error,ErrorTuple} -> 
-      ErrorTuple
+      {error,ErrorTuple}
   end.
 
 mapping_json(Name,Url,Type) ->
@@ -148,7 +204,11 @@ mapping_json(Name,Url,Type) ->
   Kv = estore_json:record_to_kv(Record),
   PropKv = estore_utils:get_value(<<"data">>,Kv,[]), 
   MappingKv = mapping_struct(Type,PropKv), 
-  {Name,{Url,jsx:encode(MappingKv)}}.
+  {ok,{Name,[
+    {json,jsx:encode(MappingKv)}
+    ,{type,Type}
+    ,{url,Url}
+  ]}}.
 
 mapping_struct(Type,PropKv) ->
   TypeBin = estore_json:erlang_to_json(Type), 
@@ -158,6 +218,9 @@ mapping_struct(Type,PropKv) ->
     ]}
   ]}].
 
+%% ----------------------------------------------------------------------------
+%% ----------------------------------------------------------------------------
+%% ----------------------------------------------------------------------------
 
 
 
