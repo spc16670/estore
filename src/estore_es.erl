@@ -40,9 +40,10 @@
 
 -include("$RECORDS_PATH/es.hrl").
 
--record('resp',{result,response,code,headers,calltime}).
+-include("estore_shared.hrl").
 
 -compile({parse_transform,estore_dynarec}).
+
 
 %% ----------------------------------------------------------------------------
 %% ----------------------------------------------------------------------------
@@ -120,7 +121,7 @@ req(Method,IndexUrl,Type,Data) ->
 %%
 %% Proxy in options: 
 %%   [{proxy,"http://proxy.com}]
-%% Basic auth in headers: 
+%% Basic auth in meta: 
 %%   [{"Authorization","Basic " ++ binary_to_list(base64:encode(U ++":"++ P))}]
 %%
 %% lhttpc does not perform so well. For some reason sometimes it seems to
@@ -131,16 +132,16 @@ req(Method,IndexUrl,Type,Data) ->
 %  {Time,Result} = timer:tc(lhttpc,request,[Url,Method,Hdrs,Data,Timeout,Opts]),
 %  Resp = case Result of
 %    {ok,{{Status,_RStr},RespHdrs,RespBody}} when Status =:= 200; Status =:= 201 ->
-%      #'resp'{'result'=ok,'code'=Status,'headers'=RespHdrs,'response'=RespBody};
+%      #'estore_result'{'result'=ok,'code'=Status,'meta'=RespHdrs,'data'=RespBody};
 %    {ok,{{Status,_RStr},RespHdrs,RespBody}} ->
-%      #'resp'{'result'=ok,'code'=Status,'headers'=RespHdrs,'response'=RespBody};
+%      #'estore_result'{'result'=ok,'code'=Status,'meta'=RespHdrs,'data'=RespBody};
 %    {error,timeout} ->
-%      #'resp'{'result'=timeout};
+%      #'estore_result'{'result'=timeout};
 %    {error,StackTrace} ->
-%      #'resp'{'result'=error,'response'=StackTrace}
+%      #'estore_result'{'result'=error,'data'=StackTrace}
 %  end,
 %  CallTime = estore_utils:format_calltime(Time),
-%  Resp#'resp'{'calltime'=CallTime}.
+%  Resp#'estore_result'{'calltime'=CallTime}.
 
 req(Method,Url,Hdrs,Data,Opts,_Tag,_Track) ->
 
@@ -151,22 +152,23 @@ req(Method,Url,Hdrs,Data,Opts,_Tag,_Track) ->
     {ok,Status,RespHdrs,Client} when Status =:= 200; Status =:= 201 ->
       case hackney:body(Client) of
 	{ok, RespBody} ->
-          #'resp'{'result'=ok,'code'=Status,'headers'=RespHdrs,'response'=jsx:decode(RespBody)};
+          #'estore_result'{'result'=ok,'code'=Status,'meta'=RespHdrs,'data'=jsx:decode(RespBody)};
 	{error, Reason} ->
-          #'resp'{'result'=error,'code'=Status,'headers'=RespHdrs,'response'=Reason}
+          #'estore_result'{'result'=error,'code'=Status,'meta'=RespHdrs,'data'=Reason}
       end;
     {ok,Status,RespHdrs,Client} ->
       case hackney:body(Client) of
 	{ok, RespBody} -> 
-	  #'resp'{'result'=ok,'code'=Status,'headers'=RespHdrs,'response'=jsx:decode(RespBody)};
+	  #'estore_result'{'result'=ok,'code'=Status,'meta'=RespHdrs,'data'=jsx:decode(RespBody)};
 	{error, Reason} -> 
-          #'resp'{'result'=error,'code'=Status,'headers'=RespHdrs,'response'=Reason}
+          #'estore_result'{'result'=error,'code'=Status,'meta'=RespHdrs,'data'=Reason}
       end;
     {error,Reason} ->
-      #'resp'{'result'=error,'response'=Reason}
+      #'estore_result'{'result'=error,'data'=Reason}
   end,
   CallTime = estore_utils:format_calltime(Time),
-  Resp#'resp'{'calltime'=CallTime}.
+  io:fwrite("RESPONSE: ~p ~n",[Resp]),
+  Resp#'estore_result'{'calltime'=CallTime}.
 
 %% ----------------------------------------------------------------------------
 %% ------------------------ INDEXES AND MAPPINGS ------------------------------
@@ -183,7 +185,7 @@ ensure_indexes_exist() ->
 
 index_exists(Name) ->
   Resp = get_mapping(Name),
-  if Resp#'resp'.'result' =:= ok andalso Resp#'resp'.'code' =:= 404 -> 
+  if Resp#'estore_result'.'result' =:= ok andalso Resp#'estore_result'.'code' =:= 404 -> 
   false; true -> true end.
 
 get_mappings() ->
@@ -230,7 +232,9 @@ type_urls() ->
     end
   end,[],records()).
 
-type_url(Name) ->
+type_url(Name) when is_binary(Name) ->
+  Name;
+type_url(Name) when is_atom(Name) ->
   try
     UrlPath = re:replace(atom_to_list(Name),"_","/",[{return,list}]),
     Type = string:sub_word(UrlPath,string:words(UrlPath,$/),$/),
@@ -316,24 +320,68 @@ bulk_insert_record(Record) ->
   Post = <<IndexData/binary,$\n,Json/binary,$\n>>,
   req('post',<<"_bulk">>,<<>>,Post).
 
+
 %% ----------------------------------------------------------------------------
 %% ----------------------------------------------------------------------------
 %% ----------------------------------------------------------------------------
 
-search(Name,Id) ->
+search(Name,Query) when is_tuple(Query) ->
+  search(Name,Query,[],50,0);
+
+search(Name,Id) when is_atom(Name) ->
   case type_url(Name) of
     {ok,{Name,{Url,Type}}} ->
       IdBin = ensure_binary(Id),
       TypeId = <<Type/binary,<<"/">>/binary,IdBin/binary>>,
       Resp = req('get',Url,TypeId,<<>>),
-      SrcKv = estore_utils:get_value(<<"_source">>,Resp#'resp'.'response',[]),
+      SrcKv = estore_utils:get_value(<<"_source">>,Resp#'estore_result'.'data',[]),
       estore_json:json_to_record(estore_json:kv_wrapper(Name,SrcKv));
     {error,ErrorTuple} -> 
       {error,ErrorTuple}
   end.
 
-search(_Name,_Where,_OrderBy,_Limit,_Offset) ->
-  ok.
+search(Name,{qs,Qs},_OrderBy,_Limit,_Offset) when is_atom(Name) ->
+  case type_url(Name) of
+    {ok,{Name,{Url,Type}}} ->
+      SearchType = <<Type/binary,<<"/_search?q=">>/binary,Qs/binary>>,
+      Resp = req('get',Url,SearchType,<<>>),
+      Hits = estore_utils:get_value(<<"hits">>,Resp#'estore_result'.'data',[]),
+      Count = estore_utils:get_value(<<"total">>,Hits,0),
+      AllHits = estore_utils:get_value(<<"hits">>,Hits,[]),
+      Resp#'estore_result'{
+	'data'=kv_to_records(Name,AllHits,[])
+	,'count'=Count
+      };
+    {error,ErrorTuple} ->
+      {error,ErrorTuple}
+  end;
+
+search(Name,{rb,Json},_OrderBy,_Limit,_Offset) when is_atom(Name) ->
+  case type_url(Name) of
+    {ok,{Name,{Url,Type}}} ->
+      SearchType = <<Type/binary,<<"/_search">>/binary>>,
+      Resp = req('post',Url,SearchType,Json),
+      Hits = estore_utils:get_value(<<"hits">>,Resp#'estore_result'.'data',[]),
+      Count = estore_utils:get_value(<<"total">>,Hits,0),
+      AllHits = estore_utils:get_value(<<"hits">>,Hits,[]),
+      Resp#'estore_result'{
+	'data'=kv_to_records(Name,AllHits,[])
+	,'count'=Count
+      };
+    {error,ErrorTuple} ->
+      {error,ErrorTuple}
+  end;
+
+search(_Index,_,_OrderBy,_Limit,_Offset) ->
+  {error,{expected_where_format,[{qs,'binary_data'},{rb,'binary_data'}]}}.
+
+kv_to_records(Name,[Kv|Kvs],Records) ->
+  SrcKv = estore_utils:get_value(<<"_source">>,Kv,[]),
+  Record = estore_json:json_to_record(estore_json:kv_wrapper(Name,SrcKv)),
+  kv_to_records(Name,Kvs,[Record] ++ Records);
+kv_to_records(_Name,[],Records) ->
+  Records.
+
 
 %% ----------------------------------------------------------------------------
 %% ----------------------------------------------------------------------------

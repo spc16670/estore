@@ -1,0 +1,1 @@
+-record('estore_result',{result,data,code,meta,calltime,count}).

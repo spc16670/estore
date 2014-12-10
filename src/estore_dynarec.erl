@@ -59,7 +59,13 @@ parse_transform(Forms, _Options) ->
 %% @doc Returns a list of pairs <code>{record_name, field_name}</code> for each
 %%      <code>field_name</code> in the record.
 get_tuples({attribute,_,record, {Name, Fields}}) ->
-    [{Name, get_field_name(Field)} || Field <- Fields].
+    NameStr = atom_to_list(Name),
+    AppNameStr = string:sub_word(atom_to_list(?MODULE),1,$_),
+    case re:run(NameStr,AppNameStr) of
+      nomatch -> 
+        [{Name, get_field_name(Field)} || Field <- Fields];
+      _ -> io:fwrite(atom_to_list(?MODULE) ++ " EXCLUDING ~p~n",[Name]), []
+    end.
 
 get_field_name({record_field, _, {atom, _, FieldName}, _Default}) ->
     FieldName;
