@@ -102,8 +102,6 @@ init() ->
     %%,drop_schema(?SCHEMA)
     ,create_schema(?SCHEMA)
     ,create_tables(models())
-    ,create_index(shopper,[lname,dob])
-    ,create_index(shopper_address,[postcode])
     ,create_index(user,[email,password])
     ,{ok,committed} = commit()
   catch Error:Reason ->
