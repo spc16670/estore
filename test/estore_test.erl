@@ -81,7 +81,7 @@ test(Module) when Module =:= estore_es ->
     'id'=1
     ,'fname'="Szymon"
     ,'lname'="Czaja"
-    ,'dob'="19870301"
+    ,'dob'="19820521"
     ,'age'=27
   },
   KSR2 = Module:new('kfis_staff'),
@@ -89,7 +89,7 @@ test(Module) when Module =:= estore_es ->
     'id'=2
     ,'fname'="Raman"
     ,'lname'="Jassal"
-    ,'dob'="19840601"
+    ,'dob'="19840701"
     ,'age'=30
   },
   [KSRec,KS2Rec].
